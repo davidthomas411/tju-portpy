@@ -68,13 +68,13 @@ Open http://localhost:3000.
 - In the UI, adjust objectives and click “Re-optimize.” The backend runs the VMAT global optimal example and returns DVH/metrics/dose for visualization and comparison.
 
 ## Current status (from implementation plan)
-- Runner: Notebook-faithful VMAT runner completed (defaults, overrides, DVH/metrics, MIP deliverability).
-- Objective schema/adapter: Defaults pulled from PortPy configs; overrides applied; validation/error surfacing still to tighten.
-- Storage: File-based run artifacts implemented (JSON + npz).
-- Backend: FastAPI endpoints in place (`/cases`, `/ensure_patient`, `/optimize`, `/runs`, `/cases/{id}/ct_slice/{slice}` with contour overlays). Logging/error handling can be improved.
-- UI: Next.js dark UI with draggable panels, objectives controls, DVH, metrics, axial dose viewer (contours), run comparison, download/refresh. Further polish needed for DVH axes, Eclipse-like objectives controls, and richer job status.
-- Validation: Basic manual checks; automated tests/smoke still pending.
-- Known gaps: MOSEK dependency for speed, download progress UX, and cleaner status/error messaging.
+- [x] Runner: Notebook-faithful VMAT runner (defaults, overrides, DVH/metrics, MIP deliverability).
+- [x] Objective schema/adapter: Defaults from PortPy configs; overrides applied. (Tighten validation/error surfacing.)
+- [x] Storage: File-based run artifacts (JSON + npz).
+- [x] Backend: FastAPI endpoints (`/cases`, `/ensure_patient`, `/optimize`, `/runs`, `/cases/{id}/ct_slice/{slice}` with contour overlays). (Improve logging/error handling.)
+- [x] UI: Next.js dark UI with draggable panels, objectives controls, DVH, metrics, axial dose viewer (contours), run comparison, download/refresh. (Polish DVH axes, Eclipse-like objectives controls, richer job status.)
+- [ ] Validation: Add automated smoke/tests.
+- [ ] UX: Better download progress, status/error messaging, MOSEK speed guidance.
 
 ## Notes on data and licensing
 - Patient data are **not** in the repo. They are pulled from [PortPy-Project/PortPy_Dataset](https://huggingface.co/datasets/PortPy-Project/PortPy_Dataset) via the downloader.
