@@ -11,9 +11,9 @@ A research demo that wraps the PortPy VMAT global optimal example in a FastAPI b
 
 ## Screenshots
 
-Web UI (light theme):
+Web UI (dark theme):
 
-![Web UI](image/ui-light.png)
+![Web UI](image/ui-dark.png)
 
 Backend + download flow:
 
