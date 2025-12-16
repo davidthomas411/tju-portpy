@@ -1,0 +1,19 @@
+.pickers {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.selector {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1;
+}
+
+.selector select {
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel-muted);
+}

@@ -1,0 +1,16 @@
+.table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.table th,
+.table td {
+  border: 1px solid var(--border);
+  padding: 8px;
+  text-align: left;
+  font-size: 13px;
+}
+
+.table thead {
+  background: var(--panel-muted);
+}

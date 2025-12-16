@@ -1,0 +1,32 @@
+.badge {
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  border: 1px solid var(--border);
+}
+
+.running {
+  background: rgba(29, 95, 167, 0.12);
+  color: var(--accent);
+}
+
+.queued {
+  background: rgba(89, 95, 110, 0.12);
+  color: var(--muted);
+}
+
+.completed {
+  background: rgba(45, 157, 120, 0.12);
+  color: var(--success);
+}
+
+.failed {
+  background: rgba(192, 57, 43, 0.12);
+  color: var(--danger);
+}
+
+.unknown {
+  background: rgba(128, 128, 128, 0.12);
+  color: var(--text);
+}

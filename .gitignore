@@ -1,0 +1,28 @@
+# Secrets / tokens
+.env
+web/.env.local
+
+# Virtual env / node_modules
+portpy-vmat-env/
+web/node_modules/
+
+# Python artifacts
+__pycache__/
+*.pyc
+
+# Next.js build/cache
+web/.next/
+web/out/
+
+# Data and downloads (do not commit patient data)
+PortPy-master/data/
+PortPy-master/metadata/
+PortPy-master/hf_cache/
+PortPy-master/data_raw_cache/
+PortPy-master/data/train/
+PortPy-master/data/data/
+data/
+
+# Logs
+*.log
+.DS_Store

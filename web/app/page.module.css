@@ -1,0 +1,45 @@
+.page {
+  padding: 18px;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: 300px 8px 1fr 8px 380px;
+  gap: 12px;
+  margin-top: 12px;
+  align-items: stretch;
+}
+
+.left {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.center {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.right {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.handle {
+  cursor: col-resize;
+  width: 8px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.02));
+  border-radius: 6px;
+  transition: background 0.2s ease;
+}
+
+.handle:hover {
+  background: rgba(29, 95, 167, 0.25);
+}
+
+.handle:active {
+  background: rgba(29, 95, 167, 0.4);
+}

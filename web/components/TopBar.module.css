@@ -1,0 +1,71 @@
+.bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  background: linear-gradient(120deg, rgba(19, 31, 51, 0.9), rgba(12, 20, 36, 0.9));
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  box-shadow: 0 14px 40px rgba(0, 0, 0, 0.35);
+}
+
+.left {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.title {
+  font-weight: 700;
+  font-size: 18px;
+  color: #fff;
+}
+
+.controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.label {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.select {
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text);
+}
+
+.actions {
+  display: flex;
+  gap: 8px;
+}
+
+.buttonPrimary {
+  background: var(--accent);
+  color: white;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  padding: 10px 16px;
+  border-radius: 10px;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 12px 30px rgba(102, 184, 255, 0.25);
+}
+
+.buttonSecondary {
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text);
+  border: 1px solid var(--border);
+  padding: 9px 12px;
+  border-radius: 10px;
+  cursor: pointer;
+}
+
+.buttonPrimary:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
