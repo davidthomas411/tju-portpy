@@ -24,7 +24,7 @@ import EnsurePatient from "../components/EnsurePatient";
 import ConsolePanel from "../components/ConsolePanel";
 import PrescriptionPane from "../components/PrescriptionPane";
 import ProgressCharts from "../components/ProgressCharts";
-import ClinicalCriteriaTable from "../components/ClinicalCriteriaTable";
+import ClinicalCriteriaBars from "../components/ClinicalCriteriaBars";
 import styles from "./page.module.css";
 
 export default function HomePage() {
@@ -318,7 +318,7 @@ function HomePageInner() {
           <PrescriptionPane plan={latestRun?.plan || null} />
           <DVHChart dvh={latestRun?.dvh} selected={objectives.map((o) => o.structure_name)} />
           <MetricsTable metrics={latestRun?.metrics} />
-          <ClinicalCriteriaTable criteria={latestRun?.clinical_criteria} />
+          <ClinicalCriteriaBars criteria={latestRun?.clinical_criteria} />
           <ProgressCharts data={progress} status={pollStatus} />
           <RunComparison runs={runsHistory} />
         </div>
