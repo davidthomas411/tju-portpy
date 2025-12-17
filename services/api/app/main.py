@@ -648,8 +648,9 @@ def _clinical_criteria_from_dose(
         struct = params.get("structure_name")
         if not struct:
             continue
+        constraint_label = ctype.replace("_", " ") if ctype else ""
         row: Dict[str, Any] = {
-            "Constraint": ctype.replace("_", " ") if ctype else "",
+            "Constraint": constraint_label,
             "Structure Name": struct,
             "Limit": None,
             "Goal": None,
@@ -675,10 +676,12 @@ def _clinical_criteria_from_dose(
             plan_val = plan_value_mean(struct)
         elif ctype == "dose_volume_V":
             dose = params.get("dose_gy")
-            if dose is None and params.get("dose_perc") is not None:
-                dose = params["dose_perc"] * pres / 100.0
+            dose_perc = params.get("dose_perc")
+            if dose is None and dose_perc is not None:
+                dose = dose_perc * pres / 100.0
             if dose is not None:
                 plan_val = plan_value_v(struct, dose)
+                row["Constraint"] = f"V({round(dose,2)}Gy)"
         elif ctype == "dose_volume_D":
             vol = params.get("volume_perc")
             if vol is not None:
