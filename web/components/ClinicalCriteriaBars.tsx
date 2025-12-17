@@ -14,7 +14,7 @@ function toNumber(val: any): number | null {
   if (val === null || val === undefined) return null;
   if (typeof val === "number") return val;
   const s = String(val);
-  const m = s.match(/[-+]?[0-9]*\\.?[0-9]+/);
+  const m = s.match(/[-+]?[0-9]*\.?[0-9]+/);
   return m ? Number(m[0]) : null;
 }
 
@@ -23,6 +23,12 @@ export default function ClinicalCriteriaBars({ criteria }: Props) {
   return (
     <div className="card">
       <div className="section-title">Clinical Criteria</div>
+      <div style={{ display: "grid", gridTemplateColumns: "160px 100px 100px 1fr", gap: 8, alignItems: "center", marginBottom: 4, fontSize: 12, color: "var(--muted)" }}>
+        <div style={{ fontWeight: 600, color: "var(--text)" }}>Constraint</div>
+        <div>Limit</div>
+        <div>Goal</div>
+        <div>Plan Value</div>
+      </div>
       <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
         {criteria.map((row, idx) => {
           const planVal = toNumber(row["Plan Value"]);

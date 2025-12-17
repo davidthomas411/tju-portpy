@@ -17,7 +17,6 @@ import { Objective, RunArtifacts, RunStatus } from "../lib/types";
 import TopBar from "../components/TopBar";
 import ObjectivesPanel from "../components/ObjectivesPanel";
 import DVHChart from "../components/DVHChart";
-import MetricsTable from "../components/MetricsTable";
 import DoseViewer from "../components/DoseViewer";
 import RunComparison from "../components/RunComparison";
 import EnsurePatient from "../components/EnsurePatient";
@@ -317,7 +316,6 @@ function HomePageInner() {
         <div className={styles.center}>
           <PrescriptionPane plan={latestRun?.plan || null} />
           <DVHChart dvh={latestRun?.dvh} selected={objectives.map((o) => o.structure_name)} />
-          <MetricsTable metrics={latestRun?.metrics} />
           <ClinicalCriteriaBars criteria={latestRun?.clinical_criteria} />
           <ProgressCharts data={progress} status={pollStatus} />
           <RunComparison runs={runsHistory} />
