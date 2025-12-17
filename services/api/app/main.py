@@ -461,10 +461,23 @@ def _load_case_manifest(case_id: str) -> Optional[Dict[str, Any]]:
 
     # Load default objectives from PortPy config
     objs = []
+    pres_gy = None
+    num_fx = None
     try:
         portpy_repo = _portpy_repo()
         objs = default_schema(portpy_repo, default_config().get("protocol_global_opt", ""))
         objs = _to_native(objs)
+        try:
+            import portpy.photon as pp  # type: ignore
+
+            data = pp.DataExplorer(data_dir=str(_portpy_repo() / "data"))
+            data.patient_id = case_id
+            clinical_criteria = pp.ClinicalCriteria(data, protocol_name=default_config().get("protocol_global_opt", ""))
+            pres_gy = clinical_criteria.get_prescription()
+            num_fx = clinical_criteria.get_num_of_fractions()
+        except Exception:
+            pres_gy = None
+            num_fx = None
     except Exception:
         objs = _to_native(objs)
 
@@ -474,6 +487,8 @@ def _load_case_manifest(case_id: str) -> Optional[Dict[str, Any]]:
         "structures_detail": _to_native(structs),
         "beams": beams,
         "objectives": objs,
+        "prescription_gy": pres_gy,
+        "num_fractions": num_fx,
     }
 
 

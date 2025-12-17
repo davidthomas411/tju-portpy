@@ -57,12 +57,18 @@ export default function ClinicalCriteriaBars({ criteria }: Props) {
           const widthPct = Math.min(100, (planVal || 0) / (maxRef * scale) * 100);
           const goalPct = goalVal ? (goalVal / (maxRef * scale)) * 100 : 0;
           const limitPct = limitVal ? (limitVal / (maxRef * scale)) * 100 : 0;
+          let statusColor = "var(--muted)";
+          if (planVal !== null && limitVal !== null) {
+            if (planVal <= (goalVal ?? limitVal)) statusColor = "#8bc34a"; // green
+            else if (planVal <= limitVal) statusColor = "#f6a623"; // orange
+            else statusColor = "#ff5f6d"; // red
+          }
 
           return (
             <div key={idx} style={{ display: "grid", gridTemplateColumns: "160px 100px 100px 1fr", alignItems: "center", gap: 8 }}>
-              <div style={{ fontSize: 12, color: "var(--muted)" }}>
-                <div style={{ fontWeight: 600, color: "var(--text)" }}>{row.Constraint || ""}</div>
-                <div>{row["Structure Name"] || ""}</div>
+              <div style={{ fontSize: 12, color: statusColor }}>
+                <div style={{ fontWeight: 600 }}>{row.Constraint || ""}</div>
+                <div style={{ color: "var(--muted)" }}>{row["Structure Name"] || ""}</div>
               </div>
               <div style={{ fontSize: 12 }}>{row.Limit ?? ""}</div>
               <div style={{ fontSize: 12 }}>{row.Goal ?? ""}</div>

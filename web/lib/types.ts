@@ -21,6 +21,8 @@ export type CaseManifest = {
   structures: string[];
   beams: { id: number; gantry_angle: number }[];
   objectives?: Objective[];
+  prescription_gy?: number;
+  num_fractions?: number;
 };
 
 export type RunStatus = "queued" | "running" | "completed" | "failed" | "unknown";

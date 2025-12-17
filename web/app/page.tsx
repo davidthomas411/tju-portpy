@@ -179,6 +179,15 @@ function HomePageInner() {
     if (runId && runsHistory[runId]) return runsHistory[runId];
     return null;
   }, [runId, runsHistory]);
+  const planForDisplay =
+    latestRun?.plan ||
+    (caseQuery.data
+      ? {
+          prescription_gy: caseQuery.data.prescription_gy,
+          num_fractions: caseQuery.data.num_fractions,
+          beam_ids: caseQuery.data.beams?.map((b) => b.id)
+        }
+      : null);
 
   // Poll run logs when a run is active
   useEffect(() => {
@@ -314,7 +323,7 @@ function HomePageInner() {
         />
 
         <div className={styles.center}>
-          <PrescriptionPane plan={latestRun?.plan || null} />
+          <PrescriptionPane plan={planForDisplay} />
           <DVHChart dvh={latestRun?.dvh} selected={objectives.map((o) => o.structure_name)} />
           <ClinicalCriteriaBars criteria={latestRun?.clinical_criteria} />
           <ProgressCharts data={progress} status={pollStatus} />
