@@ -10,6 +10,11 @@
   align-items: stretch;
 }
 
+.bottom {
+  grid-column: 1 / -1;
+  margin-top: 12px;
+}
+
 .left {
   display: flex;
   flex-direction: column;

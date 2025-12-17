@@ -6,6 +6,7 @@ A research demo that wraps the PortPy VMAT global optimal example in a FastAPI b
 - Run the VMAT global optimal example programmatically (MOSEK/ECOS_BB)
 - View DVHs, key dose metrics, and axial dose/contour slices
 - Adjust objective weights/targets and compare runs side by side
+- Stream solver logs/progress (MOSEK/ECOS) and check solver health/license
 
 > ⚠️ Research only. No clinical use. PortPy is licensed for non-commercial academic/research purposes.
 
@@ -22,7 +23,7 @@ Backend + download flow:
 ## Project structure
 
 - `services/api/app/` — FastAPI backend
-  - `main.py` — API endpoints (`/cases`, `/ensure_patient/{id}`, `/optimize`, `/runs/{id}`, `/cases/{id}/ct_slice/{slice}`)
+  - `main.py` — API endpoints (`/cases`, `/ensure_patient/{id}`, `/optimize`, `/runs/{id}`, `/cases/{id}/ct_slice/{slice}`, `/health/solver`)
   - `download_patient.py` — Fetch a single patient folder from Hugging Face if missing
   - `portpy_runner/vmat_global_optimal_runner.py` — Notebook-faithful VMAT runner
   - `storage.py` — File-based run artifacts
@@ -42,8 +43,9 @@ source portpy-vmat-env/bin/activate
 pip install -r PortPy-master/requirements.txt
 pip install fastapi uvicorn python-dotenv pillow scipy "numpy<2"
 
-# (optional) set HF token for faster downloads
-echo "HF_TOKEN=your_token" >> .env  # or export in shell
+# (optional) set HF token for faster downloads and MOSEK license path
+echo "HF_TOKEN=your_token" >> .env
+echo "MOSEKLM_LICENSE_FILE=/absolute/path/to/.mosek/mosek.lic" >> .env
 
 uvicorn services.api.app.main:app --reload --port 8000
 ```
@@ -66,6 +68,11 @@ Open http://localhost:3000.
 
 ### Running optimization
 - In the UI, adjust objectives and click “Re-optimize.” The backend runs the VMAT global optimal example and returns DVH/metrics/dose for visualization and comparison.
+- Watch the solver console/progress charts for gap/objective/runtime; the elapsed timer stops when the run finishes.
+- Use the dose threshold slider in the CT viewer to focus the isodose wash.
+
+### MOSEK health check
+- Backend endpoint: `GET /health/solver` reports import/license status (fails open to ECOS_BB otherwise).
 
 ## Current status (from implementation plan)
 - [x] Runner: Notebook-faithful VMAT runner (defaults, overrides, DVH/metrics, MIP deliverability).

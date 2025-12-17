@@ -41,7 +41,12 @@ def default_config() -> Dict[str, Any]:
         "beamlet_down_sample_factor": 6,
         "per_beam_mu_upper_bound": 2.0,  # U in notebook
         "solver": "MOSEK",
-        "solver_verbose": False,
+        "solver_verbose": True,
+        # Keep MIP runs bounded so they finish in a few minutes
+        "mosek_params": {
+            "MSK_DPAR_MIO_MAX_TIME": 300.0,       # seconds
+            "MSK_DPAR_MIO_TOL_REL_GAP": 0.05,     # stop at 5% gap
+        },
         "objective_overrides": [],  # list of dicts (structure_name, type, weight, dose_gy/dose_perc)
         "metrics": _default_metrics_config(),
         "dvh_structures": ["PTV", "ESOPHAGUS", "HEART", "CORD", "LUNG_R"],
@@ -119,15 +124,42 @@ def run_vmat_global_optimal(config: Optional[Dict[str, Any]] = None) -> Dict[str
     # Solve
     start_solve = time.time()
     try:
-        sol = opt.solve(solver=cfg["solver"], verbose=cfg.get("solver_verbose", False))
+        solve_kwargs = {"verbose": cfg.get("solver_verbose", False)}
+        if cfg["solver"] == "MOSEK" and cfg.get("mosek_params"):
+            solve_kwargs["mosek_params"] = cfg.get("mosek_params")
+        sol = opt.solve(solver=cfg["solver"], **solve_kwargs)
         solver_used = cfg["solver"]
     except Exception as err:  # noqa: BLE001
-        # Optional fallback to an open-source solver if MOSEK is unavailable
-        fallback = "ECOS_BB"
-        sol = opt.solve(solver=fallback, verbose=True)
-        solver_used = fallback
-        sol["warning"] = f"Primary solver failed ({err}); used {fallback}."
+        # Retry MOSEK without custom params before falling back
+        if cfg["solver"] == "MOSEK":
+            try:
+                sol = opt.solve(solver="MOSEK", verbose=cfg.get("solver_verbose", False))
+                solver_used = "MOSEK"
+                sol["warning"] = f"Retry without mosek_params after error: {err}"
+            except Exception as err2:  # noqa: BLE001
+                fallback = "ECOS_BB"
+                sol = opt.solve(solver=fallback, verbose=True)
+                solver_used = fallback
+                sol["warning"] = f"Primary solver failed ({err}); retry failed ({err2}); used {fallback}."
+        else:
+            fallback = "ECOS_BB"
+            sol = opt.solve(solver=fallback, verbose=True)
+            solver_used = fallback
+            sol["warning"] = f"Primary solver failed ({err}); used {fallback}."
     solve_time = time.time() - start_solve
+
+    status = getattr(opt.prob, "status", None) if getattr(opt, "prob", None) else sol.get("status")
+    if status not in ("optimal", "optimal_inaccurate"):
+        # Surface failure early; downstream artifacts depend on a valid solution
+        return {
+            "solver_trace": {
+                "solver": solver_used,
+                "status": status or "failed",
+                "warning": sol.get("warning"),
+                "solve_time_seconds": solve_time,
+            },
+            "solution": {},
+        }
 
     # Attach MIP vars to solution
     sol["MU"] = mip_vars["mu"].value

@@ -13,19 +13,32 @@ DATASET_REPO = "PortPy-Project/PortPy_Dataset"
 def ensure_patient(patient_id: str, portpy_repo: Path) -> Path:
     """
     Ensure patient data exists under portpy_repo/data/<patient_id>.
-    If the folder is missing or empty, download just that patient from HF.
+    If the folder is missing, empty, or missing required assets, download just that patient from HF.
     """
     data_dir = portpy_repo / "data"
     target_dir = data_dir / patient_id
+    required = [
+        "CT_Data.h5",
+        "CT_MetaData.json",
+        "StructureSet_Data.h5",
+        "StructureSet_MetaData.json",
+    ]
 
-    # If present and non-empty, return
+    # If present and has required files, return; otherwise purge and re-download
     if target_dir.exists():
+        missing = [name for name in required if not (target_dir / name).exists()]
         try:
             next(target_dir.iterdir())
-            return target_dir
+            is_empty = False
         except StopIteration:
-            # empty folder; remove
-            target_dir.unlink() if target_dir.is_symlink() else target_dir.rmdir()
+            is_empty = True
+
+        if not is_empty and not missing:
+            return target_dir
+
+        import shutil
+
+        shutil.rmtree(target_dir)
 
     cache_dir = portpy_repo / "hf_cache"
     cache_dir.mkdir(parents=True, exist_ok=True)

@@ -56,19 +56,27 @@ export default function ObjectivesPanel({ objectives, onChange }: Props) {
               <div className={styles.sliderRow}>
                 <div className={styles.sliderLabel}>
                   <span>Weight</span>
-                  <span className={styles.sliderValue}>{Math.round(obj.weight)}</span>
+                  <span className={styles.sliderValue}>{obj.weight}</span>
                 </div>
                 <div className={styles.sliderShell}>
                   <input
                     className={styles.slider}
                     type="range"
                     min={0}
-                    max={100000}
-                    step={250}
+                    max={Math.max(500, (obj.default_weight ?? obj.weight ?? 0) * 4)}
+                    step={Math.max(1, Math.round((obj.default_weight ?? obj.weight ?? 1) / 10))}
                     value={obj.weight}
                     onChange={(e) => update(idx, { weight: Number(e.target.value) })}
                   />
-                  <div className={styles.sliderTrack} style={{ width: `${Math.min(100, (obj.weight / 100000) * 100)}%` }} />
+                  <div
+                    className={styles.sliderTrack}
+                    style={{
+                      width: `${Math.min(
+                        100,
+                        (obj.weight / (Math.max(1, (obj.default_weight ?? obj.weight ?? 1) * 4))) * 100
+                      )}%`
+                    }}
+                  />
                 </div>
               </div>
 
@@ -82,7 +90,7 @@ export default function ObjectivesPanel({ objectives, onChange }: Props) {
                     <input
                       className={styles.number}
                       type="number"
-                      value={(obj.dose_gy as number) ?? obj.dose_perc ?? 0}
+                      value={(obj.dose_gy as number) ?? obj.dose_perc ?? ""}
                       onChange={(e) =>
                         update(
                           idx,
@@ -91,6 +99,11 @@ export default function ObjectivesPanel({ objectives, onChange }: Props) {
                       }
                     />
                     <span className={styles.unit}>{obj.dose_gy !== undefined ? "Gy" : "% Rx"}</span>
+                    {obj.volume_perc !== undefined || obj.volume_cc !== undefined ? (
+                      <span className={styles.volumeBadge}>
+                        {obj.volume_perc !== undefined ? `${obj.volume_perc}%` : `${obj.volume_cc} cc`}
+                      </span>
+                    ) : null}
                   </div>
                 </div>
               ) : null}

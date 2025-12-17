@@ -8,9 +8,11 @@ type Props = {
   runStatus: string;
   onReoptimize: () => void;
   isRunning: boolean;
+  solverHealth?: { mosek_import: boolean; mosek_license: boolean; solver_used: string | null; error?: string };
 };
 
-export default function TopBar({ cases, selectedCase, onSelectCase, runStatus, onReoptimize, isRunning }: Props) {
+export default function TopBar({ cases, selectedCase, onSelectCase, runStatus, onReoptimize, isRunning, solverHealth }: Props) {
+  const solverOk = solverHealth?.mosek_import && solverHealth?.mosek_license;
   return (
     <div className={`${styles.bar} card`}>
       <div className={styles.left}>
@@ -25,6 +27,12 @@ export default function TopBar({ cases, selectedCase, onSelectCase, runStatus, o
             ))}
           </select>
           <StatusBadge status={runStatus} />
+          <span className={styles.solver}>
+            Solver:{" "}
+            <span className={solverOk ? styles.solverOk : styles.solverBad}>
+              {solverOk ? "MOSEK ready" : solverHealth?.error ? "MOSEK unavailable" : "checking..."}
+            </span>
+          </span>
         </div>
       </div>
       <div className={styles.actions}>

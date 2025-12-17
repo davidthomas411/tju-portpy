@@ -30,17 +30,26 @@ def default_schema(portpy_repo: Path, protocol_name: str) -> List[Dict[str, Any]
         entry = {
             "structure_name": obj.get("structure_name"),
             "type": obj.get("type"),
-            "weight": obj.get("weight"),
+            "weight": _to_native(obj.get("weight")),
+            "default_weight": _to_native(obj.get("weight")),
             "role": _infer_role(obj.get("structure_name", "")),
             "editable_weight": True,
             "editable_target": False,
         }
         if "dose_gy" in obj:
-            entry["dose_gy"] = obj["dose_gy"]
+            entry["dose_gy"] = _to_native(obj["dose_gy"])
+            entry["default_dose_gy"] = _to_native(obj["dose_gy"])
             entry["editable_target"] = True
         if "dose_perc" in obj:
-            entry["dose_perc"] = obj["dose_perc"]
+            entry["dose_perc"] = _to_native(obj["dose_perc"])
+            entry["default_dose_perc"] = _to_native(obj["dose_perc"])
             entry["editable_target"] = True
+        if "volume_perc" in obj:
+            entry["volume_perc"] = _to_native(obj["volume_perc"])
+            entry["default_volume_perc"] = _to_native(obj["volume_perc"])
+        if "volume_cc" in obj:
+            entry["volume_cc"] = _to_native(obj["volume_cc"])
+            entry["default_volume_cc"] = _to_native(obj["volume_cc"])
         schema.append(entry)
     return schema
 
@@ -71,3 +80,17 @@ def _infer_role(structure_name: str) -> str:
     if structure_name.upper().startswith("PTV") or structure_name.upper() in {"CTV", "GTV"}:
         return "target"
     return "oar"
+
+
+def _to_native(val):
+    try:
+        import numpy as np
+    except Exception:
+        np = None
+    if np is not None and isinstance(val, (np.generic,)):
+        return val.item()
+    if isinstance(val, list):
+        return [_to_native(v) for v in val]
+    if isinstance(val, dict):
+        return {k: _to_native(v) for k, v in val.items()}
+    return val

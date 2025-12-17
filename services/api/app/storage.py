@@ -78,6 +78,52 @@ def load_run(run_id: str) -> Dict[str, Any]:
     return data
 
 
+def append_log_line(run_id: str, message: str) -> None:
+    rd = run_dir(run_id)
+    path = rd / "run.log"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a") as f:
+        f.write(message + "\n")
+
+
+def load_log_lines(run_id: str, max_lines: int = 500) -> list[str]:
+    rd = run_dir(run_id)
+    path = rd / "run.log"
+    if not path.exists():
+        return []
+    with path.open() as f:
+        lines = f.readlines()
+    return lines[-max_lines:]
+
+
+def append_progress(run_id: str, payload: Dict[str, Any]) -> None:
+    rd = run_dir(run_id)
+    path = rd / "progress.jsonl"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a") as f:
+        f.write(json.dumps(payload) + "\n")
+
+
+def load_progress(run_id: str, max_lines: int = 1000) -> list[Dict[str, Any]]:
+    rd = run_dir(run_id)
+    path = rd / "progress.jsonl"
+    if not path.exists():
+        return []
+    with path.open() as f:
+        lines = f.readlines()
+    lines = lines[-max_lines:]
+    out = []
+    for line in lines:
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            out.append(json.loads(line))
+        except Exception:
+            continue
+    return out
+
+
 def save_case_manifest(case_id: str, manifest: Dict[str, Any]) -> Path:
     case_dir = PORTPY_CACHE_DIR / "cases" / case_id
     case_dir.mkdir(parents=True, exist_ok=True)

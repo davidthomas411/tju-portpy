@@ -33,22 +33,30 @@ export default function DVHChart({ dvh, selected }: Props) {
       <div className={styles.chart}>
         {hasData ? (
           <ResponsiveContainer width="100%" height={320}>
-            <LineChart data={rows} margin={{ top: 12, right: 24, bottom: 48, left: 64 }}>
+            <LineChart data={rows} margin={{ top: 12, right: 140, bottom: 48, left: 64 }}>
               <CartesianGrid stroke="rgba(255,255,255,0.06)" />
               <XAxis
                 dataKey="dose"
                 stroke={axisColor}
                 tick={{ fill: axisColor }}
+                tickFormatter={(v) => (v != null ? Math.round(v) : "")}
+                allowDecimals={false}
                 label={{ value: "Dose (Gy)", position: "insideBottom", offset: -20, fill: axisColor }}
               />
               <YAxis
                 stroke={axisColor}
                 tick={{ fill: axisColor }}
                 label={{ value: "Volume (%)", angle: -90, position: "insideLeft", offset: 10, fill: axisColor }}
-                domain={[0, 110]}
+                domain={[0, 100]}
               />
-              <Tooltip />
-              <Legend wrapperStyle={{ color: axisColor }} />
+              <Tooltip formatter={(v: any) => (v != null && !isNaN(v) ? Number(v).toFixed(2) : v)} />
+              <Legend
+                wrapperStyle={{ color: axisColor }}
+                layout="vertical"
+                align="right"
+                verticalAlign="middle"
+                iconType="circle"
+              />
               {structNames.map((name, idx) => (
                 <Line key={name} type="monotone" dataKey={name} stroke={palette[idx % palette.length]} dot={false} strokeWidth={2} />
               ))}

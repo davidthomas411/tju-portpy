@@ -4,17 +4,17 @@ type Props = {
   metrics?: Record<string, Record<string, number>>;
 };
 
-const metricOrder = [
-  { struct: "PTV", keys: ["D95", "D98", "D2"] },
-  { struct: "ESOPHAGUS", keys: ["Dmean", "Dmax"] },
-  { struct: "RECTUM", keys: ["Dmean", "Dmax", "D2cc"] },
-  { struct: "BLADDER", keys: ["Dmean", "Dmax"] },
-  { struct: "FEM_HEAD_L", keys: ["Dmax"] },
-  { struct: "FEM_HEAD_R", keys: ["Dmax"] }
-];
+const preferredOrder = ["PTV", "ESOPHAGUS", "CORD", "HEART", "LUNG_L", "LUNG_R", "RECTUM", "BLADDER", "FEM_HEAD_L", "FEM_HEAD_R"];
 
 export default function MetricsTable({ metrics }: Props) {
-  if (!metrics) return null;
+  if (!metrics || Object.keys(metrics).length === 0) return null;
+
+  const structs = Array.from(
+    new Set([
+      ...preferredOrder.filter((s) => metrics[s]),
+      ...Object.keys(metrics).filter((s) => !preferredOrder.includes(s))
+    ])
+  );
 
   return (
     <div className="card">
@@ -28,19 +28,17 @@ export default function MetricsTable({ metrics }: Props) {
           </tr>
         </thead>
         <tbody>
-          {metricOrder.map((row) =>
-            row.keys.map((k, idx) => {
-              const val = metrics[row.struct]?.[k];
-              if (val === undefined) return null;
-              return (
-                <tr key={`${row.struct}-${k}`}>
-                  {idx === 0 ? <td rowSpan={row.keys.length}>{row.struct}</td> : null}
-                  <td>{k}</td>
-                  <td>{val.toFixed(2)}</td>
-                </tr>
-              );
-            })
-          )}
+          {structs.map((struct) => {
+            const entries = Object.entries(metrics[struct] || {});
+            if (entries.length === 0) return null;
+            return entries.map(([k, val], idx) => (
+              <tr key={`${struct}-${k}`}>
+                {idx === 0 ? <td rowSpan={entries.length}>{struct}</td> : null}
+                <td>{k}</td>
+                <td>{val.toFixed(2)}</td>
+              </tr>
+            ));
+          })}
         </tbody>
       </table>
     </div>

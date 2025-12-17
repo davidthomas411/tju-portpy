@@ -37,10 +37,31 @@ export async function fetchRun(runId: string): Promise<{ run_id: string; status:
   return http(`/runs/${runId}`);
 }
 
+export async function fetchRunLogs(runId: string): Promise<{ run_id: string; status: RunStatus; lines: string[] }> {
+  return http(`/runs/${runId}/logs`);
+}
+
+export async function fetchRunProgress(runId: string): Promise<{ run_id: string; status: RunStatus; progress: any[] }> {
+  return http(`/runs/${runId}/progress`);
+}
+
+export async function fetchSolverHealth(): Promise<{ mosek_import: boolean; mosek_license: boolean; solver_used: string | null; error?: string; license_file?: string }> {
+  return http(`/health/solver`);
+}
+
 export async function ensurePatient(caseId: string): Promise<{ case_id: string; path: string }> {
   return http(`/ensure_patient/${caseId}`, { method: "POST" });
 }
 
 export async function fetchCtSlice(caseId: string, sliceIdx: number): Promise<any> {
   return http(`/cases/${caseId}/ct_slice/${sliceIdx}`);
+}
+
+export async function fetchReferenceDose(caseId: string): Promise<RunArtifacts & { case_id: string }> {
+  return http(`/cases/${caseId}/reference_dose`);
+}
+
+export async function fetchDoseSlice(caseId: string, sliceIdx: number, thresholdGy?: number): Promise<{ slice_index: number; overlay_png: string; stats: any }> {
+  const params = thresholdGy !== undefined ? `?threshold_gy=${encodeURIComponent(thresholdGy)}` : "";
+  return http(`/cases/${caseId}/dose_slice/${sliceIdx}${params}`);
 }

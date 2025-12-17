@@ -45,6 +45,21 @@
   gap: 8px;
 }
 
+.solver {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.solverOk {
+  color: var(--success);
+  font-weight: 700;
+}
+
+.solverBad {
+  color: var(--danger);
+  font-weight: 700;
+}
+
 .buttonPrimary {
   background: var(--accent);
   color: white;

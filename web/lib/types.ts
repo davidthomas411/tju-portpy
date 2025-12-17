@@ -25,9 +25,17 @@ export type CaseManifest = {
 
 export type RunStatus = "queued" | "running" | "completed" | "failed" | "unknown";
 
+export type DoseInfo = {
+  dose_1d?: number[];
+  path?: string;
+  stats?: { mean_gy: number; max_gy: number; shape?: number[] };
+  shape?: number[];
+  source?: string;
+};
+
 export type RunArtifacts = {
   dvh?: Record<string, { dose_gy: number[]; volume_perc: number[] }>;
   metrics?: Record<string, Record<string, number>>;
-  dose?: { dose_1d: number[]; path?: string };
+  dose?: DoseInfo;
   plan?: Record<string, any>;
 };
