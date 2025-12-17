@@ -33,7 +33,8 @@ export default function ClinicalCriteriaBars({ criteria }: Props) {
         {criteria.map((row, idx) => {
           const planVal = toNumber(row["Plan Value"]);
           const limitVal = toNumber(row.Limit);
-          const goalVal = toNumber(row.Goal);
+          const goalValRaw = toNumber(row.Goal);
+          const goalVal = goalValRaw !== null ? goalValRaw : limitVal; // if no goal, treat limit as goal so it's not all red
           const maxRef = Math.max(planVal || 0, limitVal || 0, goalVal || 0) || 1;
           const scale = 1.2; // leave headroom
           const widthPct = Math.min(100, (planVal || 0) / (maxRef * scale) * 100);
