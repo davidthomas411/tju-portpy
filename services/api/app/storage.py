@@ -42,6 +42,7 @@ def save_run_artifacts(run_id: str, payload: Dict[str, Any]) -> Dict[str, Path]:
         "solver_trace": payload.get("solver_trace"),
         "dvh": payload.get("dvh"),
         "metrics": payload.get("metrics"),
+        "clinical_criteria": payload.get("clinical_criteria"),
         "plan": payload.get("plan"),
     }
     for name, data in to_json.items():
@@ -67,7 +68,7 @@ def save_run_artifacts(run_id: str, payload: Dict[str, Any]) -> Dict[str, Path]:
 def load_run(run_id: str) -> Dict[str, Any]:
     rd = run_dir(run_id)
     data: Dict[str, Any] = {}
-    for name in ["config", "solver_trace", "dvh", "metrics", "plan", "logs"]:
+    for name in ["config", "solver_trace", "dvh", "metrics", "clinical_criteria", "plan", "logs"]:
         path = rd / f"{name}.json"
         if path.exists():
             data[name] = _read_json(path)

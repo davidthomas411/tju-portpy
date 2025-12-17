@@ -12,6 +12,7 @@ from __future__ import annotations
 import sys
 import time
 from copy import deepcopy
+import json
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -172,6 +173,7 @@ def run_vmat_global_optimal(config: Optional[Dict[str, Any]] = None) -> Dict[str
     dvh_structs = cfg.get("dvh_structures") or my_plan.structures.get_structures()
     dvh_data = _compute_dvh(my_plan, sol, dvh_structs)
     metrics = _compute_metrics(my_plan, sol, cfg.get("metrics", []))
+    clinical_table = _compute_clinical_criteria(my_plan, sol, clinical_criteria)
 
     solver_trace = {
         "solver": solver_used,
@@ -185,6 +187,7 @@ def run_vmat_global_optimal(config: Optional[Dict[str, Any]] = None) -> Dict[str
         "solver_trace": solver_trace,
         "dvh": dvh_data,
         "metrics": metrics,
+        "clinical_criteria": clinical_table,
         "dose": {
             "dose_1d": sol["dose_1d"],
             "shape": list(sol["dose_1d"].shape),
@@ -386,6 +389,32 @@ def _compute_metrics(my_plan, sol: Dict[str, Any], metrics_cfg: List[Dict[str, A
                 dose = Evaluation.get_dose(sol, struct=struct, volume_per=vol_per, dose_1d=dose_1d)
                 metrics[struct][f"D{vol_cc}cc"] = float(dose)
     return metrics
+
+
+def _compute_clinical_criteria(my_plan, sol: Dict[str, Any], clinical_criteria) -> List[Dict[str, Any]]:
+    """Return clinical criteria table (Constraint, Structure, Limit, Goal, Plan Value)."""
+    try:
+        from portpy.photon.evaluation import Evaluation  # type: ignore
+        import pandas as pd  # type: ignore
+    except Exception:
+        return []
+
+    try:
+        df = Evaluation.display_clinical_criteria(
+            my_plan,
+            sol=sol,
+            clinical_criteria=clinical_criteria,
+            return_df=True,
+            in_browser=False,
+            open_browser=False,
+        )
+        if df is None:
+            return []
+        df = df.where(pd.notnull(df), None)
+        table = df.to_dict(orient="records")
+        return json.loads(json.dumps(table))
+    except Exception:
+        return []
 
 
 def _default_metrics_config() -> List[Dict[str, Any]]:

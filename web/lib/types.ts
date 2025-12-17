@@ -38,4 +38,5 @@ export type RunArtifacts = {
   metrics?: Record<string, Record<string, number>>;
   dose?: DoseInfo;
   plan?: Record<string, any>;
+  clinical_criteria?: Array<Record<string, any>>;
 };
