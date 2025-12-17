@@ -85,7 +85,8 @@ def run_vmat_global_optimal(config: Optional[Dict[str, Any]] = None) -> Dict[str
 
     # Clinical/opt params
     clinical_criteria = pp.ClinicalCriteria(data, protocol_name=cfg["protocol_global_opt"])
-    opt_params = data.load_config_opt_params(protocol_name=cfg["protocol_global_opt"])
+    opt_protocol = cfg.get("protocol_vmat") or cfg["protocol_global_opt"]
+    opt_params = data.load_config_opt_params(protocol_name=opt_protocol)
     structs.create_opt_structures(opt_params=opt_params)
 
     # Influence matrix + downsampling

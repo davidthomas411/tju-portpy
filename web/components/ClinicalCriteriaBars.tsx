@@ -20,6 +20,23 @@ function toNumber(val: any): number | null {
 
 export default function ClinicalCriteriaBars({ criteria }: Props) {
   if (!criteria || criteria.length === 0) return null;
+
+  // Merge duplicate V(xGy) rows per structure by folding limit/goal into one entry
+  const merged: Row[] = [];
+  const byKey: Record<string, Row> = {};
+  criteria.forEach((row) => {
+    const key = `${row["Constraint"] || ""}-${row["Structure Name"] || ""}`;
+    if (!byKey[key]) {
+      byKey[key] = { ...row };
+    } else {
+      const tgt = byKey[key];
+      if (row.Limit !== undefined && row.Limit !== null) tgt.Limit = row.Limit;
+      if (row.Goal !== undefined && row.Goal !== null) tgt.Goal = row.Goal;
+      if (row["Plan Value"] !== undefined && row["Plan Value"] !== null) tgt["Plan Value"] = row["Plan Value"];
+    }
+  });
+  Object.values(byKey).forEach((r) => merged.push(r));
+
   return (
     <div className="card">
       <div className="section-title">Clinical Criteria</div>
@@ -30,7 +47,7 @@ export default function ClinicalCriteriaBars({ criteria }: Props) {
         <div>Plan Value</div>
       </div>
       <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-        {criteria.map((row, idx) => {
+        {merged.map((row, idx) => {
           const planVal = toNumber(row["Plan Value"]);
           const limitVal = toNumber(row.Limit);
           const goalValRaw = toNumber(row.Goal);
