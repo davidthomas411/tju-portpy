@@ -150,9 +150,17 @@ def get_reference_dose(case_id: str, structs: Optional[str] = None) -> Dict[str,
             clinical_criteria = pp.ClinicalCriteria(data, protocol_name=default_config().get("protocol_global_opt", ""))
             pres_gy = clinical_criteria.get_prescription()
             num_fx = clinical_criteria.get_num_of_fractions()
+            clinical_table = _clinical_criteria_from_dose(
+                dose_3d=dose_3d,
+                ss_meta_path=ss_meta_path,
+                ss_data_path=ss_data_path,
+                clinical_criteria=clinical_criteria,
+                prescription_gy=pres_gy,
+            )
         except Exception:
             pres_gy = None
             num_fx = None
+            clinical_table = []
     except HTTPException:
         raise
     except Exception as exc:  # noqa: BLE001
@@ -187,6 +195,7 @@ def get_reference_dose(case_id: str, structs: Optional[str] = None) -> Dict[str,
         },
         "dvh": dvh,
         "metrics": metrics,
+        "clinical_criteria": clinical_table,
     })
 
 
@@ -558,6 +567,127 @@ def _compute_dvh_from_dose(
             dvh[name] = {"dose_gy": edges[:-1].tolist(), "volume_perc": volume_perc.tolist()}
             metrics[name] = {"Dmean": float(np.mean(vals)), "Dmax": max_dose}
     return dvh, metrics
+
+
+def _clinical_criteria_from_dose(
+    dose_3d: np.ndarray,
+    ss_meta_path: Path,
+    ss_data_path: Path,
+    clinical_criteria,
+    prescription_gy: Optional[float],
+) -> List[Dict[str, Any]]:
+    """Compute clinical criteria plan values directly from dose and structure masks."""
+    try:
+        with ss_meta_path.open() as f:
+            ss_meta = json.load(f)
+        if isinstance(ss_meta, dict) and "structures" in ss_meta:
+            names = ss_meta["structures"].get("name", [])
+            mask_files = ss_meta["structures"].get("structure_mask_3d_File", [])
+        else:
+            names = [s.get("name") for s in ss_meta]
+            mask_files = [s.get("structure_mask_3d_File") for s in ss_meta]
+        name_to_mask = {}
+        with h5py.File(ss_data_path, "r") as h5:
+            for n, mf in zip(names, mask_files):
+                if not n or not mf:
+                    continue
+                ds_name = mf.split("/")[-1]
+                if ds_name in h5:
+                    mask = h5[ds_name][()]
+                    if mask.shape == dose_3d.shape:
+                        name_to_mask[n] = mask.astype(bool)
+    except Exception:
+        return []
+
+    pres = prescription_gy or 1.0
+    table: List[Dict[str, Any]] = []
+
+    def plan_value_max(struct: str) -> Optional[float]:
+        m = name_to_mask.get(struct)
+        if m is None:
+            return None
+        vals = dose_3d[m]
+        if vals.size == 0:
+            return None
+        return float(np.max(vals))
+
+    def plan_value_mean(struct: str) -> Optional[float]:
+        m = name_to_mask.get(struct)
+        if m is None:
+            return None
+        vals = dose_3d[m]
+        if vals.size == 0:
+            return None
+        return float(np.mean(vals))
+
+    def plan_value_v(struct: str, dose: float) -> Optional[float]:
+        m = name_to_mask.get(struct)
+        if m is None:
+            return None
+        vals = dose_3d[m]
+        if vals.size == 0:
+            return None
+        return float(np.sum(vals >= dose) / vals.size * 100.0)
+
+    def plan_value_d(struct: str, volume_perc: float) -> Optional[float]:
+        m = name_to_mask.get(struct)
+        if m is None:
+            return None
+        vals = dose_3d[m]
+        if vals.size == 0:
+            return None
+        # dose at volume_perc% (descending)
+        sorted_vals = np.sort(vals)[::-1]
+        idx = int(np.clip(volume_perc / 100.0 * (len(sorted_vals) - 1), 0, len(sorted_vals) - 1))
+        return float(sorted_vals[idx])
+
+    for crit in getattr(clinical_criteria, "clinical_criteria_dict", {}).get("criteria", []):
+        ctype = crit.get("type")
+        params = crit.get("parameters", {})
+        cons = crit.get("constraints", {})
+        struct = params.get("structure_name")
+        if not struct:
+            continue
+        row: Dict[str, Any] = {
+            "Constraint": ctype.replace("_", " ") if ctype else "",
+            "Structure Name": struct,
+            "Limit": None,
+            "Goal": None,
+        }
+        # Limits/goals formatting
+        if "limit_dose_gy" in cons:
+            row["Limit"] = f"{cons['limit_dose_gy']}Gy"
+        elif "limit_dose_perc" in cons and prescription_gy:
+            row["Limit"] = f"{cons['limit_dose_perc']}%"
+        elif "limit_volume_perc" in cons:
+            row["Limit"] = f"{cons['limit_volume_perc']}%"
+        if "goal_dose_gy" in cons:
+            row["Goal"] = f"{cons['goal_dose_gy']}Gy"
+        elif "goal_dose_perc" in cons and prescription_gy:
+            row["Goal"] = f"{cons['goal_dose_perc']}%"
+        elif "goal_volume_perc" in cons:
+            row["Goal"] = f"{cons['goal_volume_perc']}%"
+
+        plan_val: Optional[float] = None
+        if ctype == "max_dose":
+            plan_val = plan_value_max(struct)
+        elif ctype == "mean_dose":
+            plan_val = plan_value_mean(struct)
+        elif ctype == "dose_volume_V":
+            dose = params.get("dose_gy")
+            if dose is None and params.get("dose_perc") is not None:
+                dose = params["dose_perc"] * pres / 100.0
+            if dose is not None:
+                plan_val = plan_value_v(struct, dose)
+        elif ctype == "dose_volume_D":
+            vol = params.get("volume_perc")
+            if vol is not None:
+                plan_val = plan_value_d(struct, vol)
+
+        if plan_val is not None:
+            row["Plan Value"] = round(plan_val, 2)
+        table.append(row)
+    return table
 
 
 def _dose_overlay_png(dose_slice: np.ndarray, threshold_gy: Optional[float] = None) -> str:

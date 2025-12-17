@@ -159,7 +159,8 @@ function HomePageInner() {
         dvh: res.dvh,
         metrics: res.metrics,
         dose: res.dose,
-        plan: res.plan
+        plan: res.plan,
+        clinical_criteria: (res as any).clinical_criteria
       };
       setRunsHistory((prev) => ({ ...prev, [runKey]: artifacts }));
       setRunId(runKey);
