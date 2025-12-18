@@ -37,6 +37,9 @@ from .storage import (
     load_log_lines,
     append_progress,
     load_progress,
+    RUNS_DIR,
+    _read_json,
+    run_dir,
 )
 from .objective_schema import _to_native
 
@@ -373,6 +376,11 @@ def get_run(run_id: str) -> Dict[str, Any]:
     status = artifacts.get("logs", {}).get("status", "unknown")
     if status == "unknown":
         status = artifacts.get("solver_trace", {}).get("status", status)
+    if status in ("optimal", "optimal_inaccurate", "inaccurate", "feasible"):
+        status = "completed"
+    # Avoid rehydrating reference runs so we do not rebuild influence matrices/BEV
+    if not _is_reference_artifacts(artifacts):
+        artifacts = _rehydrate_artifacts(artifacts)
     return {"run_id": run_id, "status": status, "artifacts": artifacts}
 
 
@@ -392,17 +400,182 @@ def get_run_progress(run_id: str) -> Dict[str, Any]:
     return {"run_id": run_id, "status": status, "progress": progress}
 
 
-@app.get("/runs/{run_id}/dose_slice/{slice_idx}")
-def get_run_dose_slice(run_id: str, slice_idx: int, threshold_gy: Optional[float] = None) -> Dict[str, Any]:
+@app.get("/runs")
+def list_runs(case_id: Optional[str] = None) -> Dict[str, Any]:
     """
-    Return a dose overlay PNG for a given optimized run (rebuilds inf_matrix and maps dose_1d to CT grid).
+    Enumerate stored runs so the UI can reload past optimizations.
     """
+    ensure_dirs()
+    runs = []
+    if not RUNS_DIR.exists():
+        return {"runs": runs}
+    for path in RUNS_DIR.iterdir():
+        if not path.is_dir():
+            continue
+        run_id = path.name
+        cfg_path = path / "config.json"
+        logs_path = path / "logs.json"
+        solver_path = path / "solver_trace.json"
+        if not cfg_path.exists():
+            continue
+        try:
+            cfg = _read_json(cfg_path)
+        except Exception:
+            cfg = {}
+        if not isinstance(cfg, dict):
+            continue
+        patient = cfg.get("patient_id")
+        if case_id and patient and patient != case_id:
+            continue
+        try:
+            logs = _read_json(logs_path) if logs_path.exists() else {}
+        except Exception:
+            logs = {}
+        try:
+            solver = _read_json(solver_path) if solver_path.exists() else {}
+        except Exception:
+            solver = {}
+        status = logs.get("status") or solver.get("status") or "unknown"
+        if status in ("optimal", "optimal_inaccurate", "inaccurate", "feasible"):
+            status = "completed"
+        created = run_id.split("-")[0] if "-" in run_id else None
+        cfg_summary = {
+            "voxel_down_sample_factors": cfg.get("voxel_down_sample_factors"),
+            "beamlet_down_sample_factor": cfg.get("beamlet_down_sample_factor"),
+            "beam_ids": cfg.get("beam_ids"),
+            "solver": cfg.get("solver"),
+            "mosek_params": cfg.get("mosek_params"),
+        }
+        try:
+            runs.append(
+                _to_native(
+                    {
+                        "run_id": run_id,
+                        "patient_id": patient,
+                        "status": status,
+                        "created": created,
+                        "config": cfg_summary,
+                    }
+                )
+            )
+        except Exception:
+            continue
+    runs = sorted(runs, key=lambda r: r["run_id"], reverse=True)
+    return {"runs": runs}
+
+
+def _rehydrate_artifacts(artifacts: Dict[str, Any]) -> Dict[str, Any]:
+    """Ensure dvh and clinical_criteria are present for a run by recomputing from dose/config."""
+    if not artifacts:
+        return artifacts
+    if _is_reference_artifacts(artifacts):
+        return artifacts
+    if artifacts.get("dvh") and artifacts.get("clinical_criteria"):
+        return artifacts
+    cfg = artifacts.get("config") or artifacts.get("config_used")
+    dose_info = artifacts.get("dose", {})
+    dose_1d = dose_info.get("dose_1d")
+    if not cfg or dose_1d is None:
+        return artifacts
+    try:
+        import portpy.photon as pp  # type: ignore
+        import numpy as np
+    except Exception:
+        return artifacts
+    try:
+        data = pp.DataExplorer(data_dir=str(cfg["data_dir"]))
+        data.patient_id = cfg["patient_id"]
+        ct = pp.CT(data)
+        structs = pp.Structures(data)
+        beams = pp.Beams(data, beam_ids=cfg["beam_ids"])
+        voxel_down_sample_factors = cfg["voxel_down_sample_factors"]
+        opt_vox_xyz_res_mm = [c * f for c, f in zip(ct.get_ct_res_xyz_mm(), voxel_down_sample_factors)]
+        beamlet_down_sample_factor = cfg["beamlet_down_sample_factor"]
+        new_beamlet_width_mm = beams.get_finest_beamlet_width() * beamlet_down_sample_factor
+        new_beamlet_height_mm = beams.get_finest_beamlet_height() * beamlet_down_sample_factor
+        inf_matrix = (
+            pp.InfluenceMatrix(ct=ct, structs=structs, beams=beams)
+            .create_down_sample(
+                beamlet_width_mm=new_beamlet_width_mm,
+                beamlet_height_mm=new_beamlet_height_mm,
+                opt_vox_xyz_res_mm=opt_vox_xyz_res_mm,
+            )
+        )
+        clinical_criteria = pp.ClinicalCriteria(data, protocol_name=cfg.get("protocol_global_opt", ""))
+        plan = pp.Plan(ct=ct, structs=structs, beams=beams, inf_matrix=inf_matrix, clinical_criteria=clinical_criteria)
+        dose_3d = None
+        if dose_info.get("dose_3d_path") and Path(dose_info["dose_3d_path"]).exists():
+            with np.load(dose_info["dose_3d_path"]) as npz:
+                dose_3d = npz["dose_3d"]
+        if dose_3d is None:
+            dose_3d = inf_matrix.dose_1d_to_3d(dose_1d=np.array(dose_1d))
+        eval_obj = pp.Evaluation(my_plan=plan)
+        if not artifacts.get("dvh"):
+            try:
+                dvh_data = eval_obj.get_dvh(dose_3d=dose_3d, struct_names=plan.structures.get_structures())
+                artifacts["dvh"] = _to_native(dvh_data)
+            except Exception:
+                pass
+        if not artifacts.get("clinical_criteria"):
+            try:
+                cc_table = eval_obj.get_clinical_criteria(clinical_criteria=clinical_criteria, dose_3d=dose_3d)
+                artifacts["clinical_criteria"] = _to_native(cc_table)
+            except Exception:
+                pass
+    except Exception:
+        return artifacts
+    return artifacts
+
+
+def _is_reference_artifacts(artifacts: Dict[str, Any]) -> bool:
+    """Determine if the artifacts belong to a shipped reference dose (avoid rebuilding)."""
+    plan = artifacts.get("plan") or {}
+    dose = artifacts.get("dose") or {}
+    cfg = artifacts.get("config") or artifacts.get("config_used") or {}
+    run_id = artifacts.get("run_id") or artifacts.get("id") or ""
+    patient_plan = plan.get("patient_id") or plan.get("case_id") or cfg.get("patient_id")
+    src_fields = [plan.get("source"), dose.get("source"), artifacts.get("source")]
+    for src in src_fields:
+        if isinstance(src, str) and "reference" in src.lower():
+            return True
+    if isinstance(run_id, str) and run_id.lower().endswith("reference"):
+        return True
+    # No dose_1d and no solver trace usually means a shipped reference bundle
+    if not dose.get("dose_1d") and not artifacts.get("solver_trace") and patient_plan and patient_plan == cfg.get("patient_id"):
+        return True
+    return False
+
+
+def _clinical_criteria_for_run(artifacts: Dict[str, Any]) -> list[Dict[str, Any]]:
+    """
+    Recompute clinical criteria for a run using stored dose/config (similar to pp.Evaluation.display_clinical_criteria).
+    """
+    cfg = artifacts.get("config")
+    dose_info = artifacts.get("dose", {})
+    dose_1d = dose_info.get("dose_1d")
+    if not cfg or dose_1d is None:
+        return []
+    try:
+        import portpy.photon as pp  # type: ignore
+        import numpy as np
+    except Exception:
+        return []
+
+
+def _materialize_run_dose(run_id: str, force: bool = False) -> np.ndarray:
+    """Compute and cache dose_3d for a run. Returns cached array if already present unless force=True."""
     artifacts = load_run(run_id)
     cfg = artifacts.get("config")
     dose_info = artifacts.get("dose", {})
     dose_1d = dose_info.get("dose_1d")
     if not cfg or dose_1d is None:
-        raise HTTPException(status_code=404, detail="Run dose not available")
+        raise HTTPException(status_code=404, detail="Run dose not available for materialization")
+
+    cache_path = run_dir(run_id) / "dose_3d.npz"
+    if cache_path.exists() and not force:
+        with np.load(cache_path) as npz:
+            return npz["dose_3d"]
+
     try:
         import portpy.photon as pp  # type: ignore
     except Exception as exc:  # noqa: BLE001
@@ -427,12 +600,80 @@ def get_run_dose_slice(run_id: str, slice_idx: int, threshold_gy: Optional[float
                 opt_vox_xyz_res_mm=opt_vox_xyz_res_mm,
             )
         )
-        plan = pp.Plan(ct=ct, structs=structs, beams=beams, inf_matrix=inf_matrix, clinical_criteria=None)
+        inf_matrix.dose_1d = np.array(dose_1d)
         dose_3d = inf_matrix.dose_1d_to_3d(dose_1d=np.array(dose_1d))
+        np.savez_compressed(cache_path, dose_3d=dose_3d)
+        return dose_3d
     except HTTPException:
         raise
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=500, detail=f"Failed to rebuild dose: {exc}")
+    try:
+        data = pp.DataExplorer(data_dir=str(cfg["data_dir"]))
+        data.patient_id = cfg["patient_id"]
+        ct = pp.CT(data)
+        structs = pp.Structures(data)
+        beams = pp.Beams(data, beam_ids=cfg["beam_ids"])
+        voxel_down_sample_factors = cfg["voxel_down_sample_factors"]
+        opt_vox_xyz_res_mm = [c * f for c, f in zip(ct.get_ct_res_xyz_mm(), voxel_down_sample_factors)]
+        beamlet_down_sample_factor = cfg["beamlet_down_sample_factor"]
+        new_beamlet_width_mm = beams.get_finest_beamlet_width() * beamlet_down_sample_factor
+        new_beamlet_height_mm = beams.get_finest_beamlet_height() * beamlet_down_sample_factor
+        inf_matrix = (
+            pp.InfluenceMatrix(ct=ct, structs=structs, beams=beams)
+            .create_down_sample(
+                beamlet_width_mm=new_beamlet_width_mm,
+                beamlet_height_mm=new_beamlet_height_mm,
+                opt_vox_xyz_res_mm=opt_vox_xyz_res_mm,
+            )
+        )
+        clinical_criteria = pp.ClinicalCriteria(data, protocol_name=cfg.get("protocol_global_opt", ""))
+        plan = pp.Plan(ct=ct, structs=structs, beams=beams, inf_matrix=inf_matrix, clinical_criteria=clinical_criteria)
+        dose_3d = inf_matrix.dose_1d_to_3d(dose_1d=np.array(dose_1d))
+        eval_obj = pp.Evaluation(my_plan=plan)
+        cc_table = eval_obj.get_clinical_criteria(clinical_criteria=clinical_criteria, dose_3d=dose_3d)
+        return _to_native(cc_table)
+    except Exception:
+        return []
+
+
+@app.get("/runs/{run_id}/dose_slice/{slice_idx}")
+def get_run_dose_slice(
+    run_id: str, slice_idx: int, threshold_gy: Optional[float] = None, materialize: bool = False
+) -> Dict[str, Any]:
+    """
+    Return a dose overlay PNG for a given optimized run (rebuilds inf_matrix and maps dose_1d to CT grid).
+    """
+    artifacts = load_run(run_id)
+    if _is_reference_artifacts(artifacts):
+        cfg = artifacts.get("config") or artifacts.get("config_used") or {}
+        case_id = cfg.get("patient_id") or cfg.get("case_id") or artifacts.get("plan", {}).get("patient_id")
+        if not case_id:
+            raise HTTPException(status_code=400, detail="Reference run missing patient_id")
+        return get_dose_slice(case_id, slice_idx, threshold_gy)
+    cfg = artifacts.get("config")
+    dose_info = artifacts.get("dose", {})
+    dose_1d = dose_info.get("dose_1d")
+    dose3d_path = dose_info.get("dose_3d_path")
+    if not cfg or (dose_1d is None and dose3d_path is None):
+        raise HTTPException(status_code=404, detail="Run dose not available")
+
+    dose_3d = None
+    if dose3d_path and Path(dose3d_path).exists():
+        try:
+            with np.load(dose3d_path) as npz:
+                dose_3d = npz["dose_3d"]
+        except Exception as exc:
+            raise HTTPException(status_code=500, detail=f"Failed to load cached dose: {exc}")
+
+    if dose_3d is None:
+        if materialize:
+            dose_3d = _materialize_run_dose(run_id, force=False)
+        else:
+            raise HTTPException(
+                status_code=404,
+                detail="Dose voxel grid not cached for this run. Use /runs/{id}/materialize_dose first.",
+            )
 
     if slice_idx < 0 or slice_idx >= dose_3d.shape[0]:
         raise HTTPException(status_code=400, detail=f"slice_idx out of range (0-{dose_3d.shape[0]-1})")
@@ -446,6 +687,17 @@ def get_run_dose_slice(run_id: str, slice_idx: int, threshold_gy: Optional[float
         "source": "optimized_run",
     }
     return {"slice_index": slice_idx, "overlay_png": overlay_png, "stats": stats}
+
+
+@app.post("/runs/{run_id}/materialize_dose")
+def materialize_run_dose(run_id: str) -> Dict[str, Any]:
+    """
+    Build and cache the 3D dose volume for a run (dose_1d -> dose_3d) so overlays can be served without
+    automatic recomputation. Safe to call multiple times; no-op if already cached.
+    """
+    dose_3d = _materialize_run_dose(run_id, force=False)
+    stats = {"mean_gy": float(np.mean(dose_3d)), "max_gy": float(np.max(dose_3d)), "shape": list(dose_3d.shape)}
+    return {"run_id": run_id, "cached": True, "stats": _to_native(stats)}
 
 
 @app.get("/health/solver")
@@ -484,9 +736,25 @@ def _run_job(run_id: str, config: Dict[str, Any]) -> None:
         append_log_line(run_id, f"[{run_id}] started")
         with _capture_solver_output(run_id, parser=_progress_parser(run_id)):
             result = run_vmat_global_optimal(config)
+        # Recompute DVH/clinical criteria from dose so every run has them
+        try:
+            rehydrated = _rehydrate_artifacts(
+                {
+                    "config": result.get("config_used", config),
+                    "dose": result.get("dose"),
+                    "dvh": result.get("dvh"),
+                    "clinical_criteria": result.get("clinical_criteria"),
+                }
+            )
+            result.update({k: v for k, v in rehydrated.items() if v is not None})
+        except Exception:
+            pass
         # Convert to native types to avoid numpy serialization issues
         result = _to_native(result)
         solver_status = result.get("solver_trace", {}).get("status", "unknown")
+        # Normalize solver statuses so the UI can treat them as completed runs
+        if solver_status in ("optimal", "optimal_inaccurate", "inaccurate", "feasible"):
+            solver_status = "completed"
         if solver_status in (None, "unknown"):
             # If we have artifacts (dose/dvh), mark as completed so UI can load them
             if result.get("dose") or result.get("dvh"):

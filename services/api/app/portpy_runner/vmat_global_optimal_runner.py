@@ -39,13 +39,14 @@ def default_config() -> Dict[str, Any]:
         "beam_ids": beam_ids,
         "protocol_global_opt": "Lung_2Gy_30Fx",
         "protocol_vmat": "Lung_2Gy_30Fx_vmat",
-        "voxel_down_sample_factors": [6, 6, 1],  # fidelity similar to notebook
-        "beamlet_down_sample_factor": 6,
+        # Higher fidelity, slower but more accurate
+        "voxel_down_sample_factors": [2, 2, 1],
+        "beamlet_down_sample_factor": 2,
         "per_beam_mu_upper_bound": 2.0,  # U in notebook
         "solver": "MOSEK",
         "solver_verbose": True,
         "mosek_params": {
-            "MSK_DPAR_MIO_MAX_TIME": 21600.0,     # allow up to ~6 hours if needed
+            "MSK_DPAR_MIO_MAX_TIME": 21600.0,     # target ~6 hours
             "MSK_DPAR_MIO_TOL_REL_GAP": 0.05,     # stop at 5% gap
         },
         "objective_overrides": [],  # list of dicts (structure_name, type, weight, dose_gy/dose_perc)
@@ -129,6 +130,8 @@ def run_vmat_global_optimal(config: Optional[Dict[str, Any]] = None) -> Dict[str
 
     sol["inf_matrix"] = inf_matrix_db
     sol["dose_1d"] = inf_matrix_db.A @ (sol["optimal_intensity"] * my_plan.get_num_of_fractions())
+    # Cache full 3D dose on the downsampled grid so slices can be served without rebuilding the matrix
+    dose_3d = inf_matrix_db.dose_1d_to_3d(dose_1d=sol["dose_1d"])
 
     # DVH + metrics
     dvh_structs = cfg.get("dvh_structures") or my_plan.structures.get_structures()
@@ -161,6 +164,7 @@ def run_vmat_global_optimal(config: Optional[Dict[str, Any]] = None) -> Dict[str
         "clinical_criteria": clinical_table,
         "dose": {
             "dose_1d": sol["dose_1d"],
+            "dose_3d": dose_3d,
             "shape": list(sol["dose_1d"].shape),
             "unit": "Gy",
             "num_fractions": my_plan.get_num_of_fractions(),

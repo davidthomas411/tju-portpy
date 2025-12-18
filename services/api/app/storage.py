@@ -49,15 +49,21 @@ def save_run_artifacts(run_id: str, payload: Dict[str, Any]) -> Dict[str, Path]:
         _write_json(rd / f"{name}.json", data)
     dose_info = payload.get("dose", {})
     dose_array = dose_info.get("dose_1d")
+    dose_3d = dose_info.get("dose_3d")
     dose_path = None
+    dose3d_path = None
     if dose_array is not None:
         dose_path = rd / "dose.npz"
         np.savez_compressed(dose_path, dose_1d=dose_array)
+    if dose_3d is not None:
+        dose3d_path = rd / "dose_3d.npz"
+        np.savez_compressed(dose3d_path, dose_3d=dose_3d)
     logs_path = rd / "logs.json"
     _write_json(logs_path, {"status": "completed", "timestamp": time.time()})
     return {
         "run_dir": rd,
         "dose_path": dose_path,
+        "dose3d_path": dose3d_path,
         "config_path": rd / "config.json",
         "metrics_path": rd / "metrics.json",
         "dvh_path": rd / "dvh.json",
@@ -76,6 +82,13 @@ def load_run(run_id: str) -> Dict[str, Any]:
     if dose_path.exists():
         with np.load(dose_path) as npz:
             data["dose"] = {"dose_1d": npz["dose_1d"].tolist(), "path": str(dose_path)}
+    dose3d_path = rd / "dose_3d.npz"
+    if dose3d_path.exists():
+        with np.load(dose3d_path) as npz:
+            dose_entry = data.get("dose", {})
+            dose_entry["dose_3d_path"] = str(dose3d_path)
+            dose_entry["shape_3d"] = list(npz["dose_3d"].shape)
+            data["dose"] = dose_entry
     return data
 
 
