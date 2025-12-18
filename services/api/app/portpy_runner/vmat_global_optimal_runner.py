@@ -30,8 +30,8 @@ def default_config() -> Dict[str, Any]:
     repo_root = _default_repo_root()
     portpy_repo = repo_root / "PortPy-master"
     data_dir = portpy_repo / "data"
-    # Use fewer beams and heavier downsampling to speed up solves
-    beam_ids = list(np.arange(0, 360, 72))  # 5 beams (every 72 degrees)
+    # Use fewer beams (valid for PortPy data) and heavier downsampling to speed up solves
+    beam_ids = [0, 11, 22, 33, 44]  # 5 valid beams from the original 7-beam set
     return {
         "patient_id": "Lung_Patient_6",
         "portpy_repo": str(portpy_repo),

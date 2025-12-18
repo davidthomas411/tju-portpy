@@ -437,6 +437,9 @@ def _run_job(run_id: str, config: Dict[str, Any]) -> None:
     except Exception as exc:  # noqa: BLE001
         append_log_line(run_id, f"[{run_id}] failed: {exc}")
         save_run_artifacts(run_id, {"solver_trace": {"status": "failed", "error": str(exc)}})
+        # mark logs status as failed so UI polling stops correctly
+        from .storage import _write_json, run_dir
+        _write_json(run_dir(run_id) / "logs.json", {"status": "failed", "timestamp": time.time(), "error": str(exc)})
 
 
 def _load_case_manifest(case_id: str) -> Optional[Dict[str, Any]]:
