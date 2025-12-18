@@ -11,9 +11,10 @@ import {
   fetchReferenceDose,
   fetchRunLogs,
   fetchRunProgress,
-  fetchSolverHealth
+  fetchSolverHealth,
+  fetchRunsList
 } from "../lib/api";
-import { Objective, RunArtifacts, RunStatus } from "../lib/types";
+import { Objective, RunArtifacts, RunStatus, RunSummary } from "../lib/types";
 import TopBar from "../components/TopBar";
 import ObjectivesPanel from "../components/ObjectivesPanel";
 import DVHChart from "../components/DVHChart";
@@ -42,6 +43,7 @@ function HomePageInner() {
   const [objectives, setObjectives] = useState<Objective[]>([]);
   const [runId, setRunId] = useState<string | null>(null);
   const [runsHistory, setRunsHistory] = useState<Record<string, RunArtifacts>>({});
+  const [runSummaries, setRunSummaries] = useState<Record<string, RunSummary>>({});
   const [displayPlanId, setDisplayPlanId] = useState<string | null>(null);
   const [pollStatus, setPollStatus] = useState<RunStatus>("unknown");
   const [ensuring, setEnsuring] = useState(false);
@@ -56,6 +58,13 @@ function HomePageInner() {
   const [logRunId, setLogRunId] = useState<string | null>(null);
   const [progress, setProgress] = useState<any[]>([]);
   const [solverHealth, setSolverHealth] = useState<any | null>(null);
+  const [voxelDs, setVoxelDs] = useState<[number, number, number]>([2, 2, 1]);
+  const [voxelDsText, setVoxelDsText] = useState<string>("2,2,1");
+  const [beamletDs, setBeamletDs] = useState<number>(2);
+  const [beamIdsText, setBeamIdsText] = useState<string>("");
+  const [maxTime, setMaxTime] = useState<number>(21600); // seconds
+  const [gap, setGap] = useState<number>(0.05);
+  const [referenceLoaded, setReferenceLoaded] = useState<boolean>(false);
   const appendConsole = (line: string) =>
     setConsoleLines((prev) => [...prev.slice(-50), `${new Date().toLocaleTimeString()}  ${line}`]);
 
@@ -72,6 +81,12 @@ function HomePageInner() {
     enabled: !!selectedCase
   });
 
+  const runsListQuery = useQuery({
+    queryKey: ["runs-list", selectedCase],
+    queryFn: () => fetchRunsList(selectedCase || undefined),
+    enabled: !!selectedCase
+  });
+
   // Auto-select first case when loaded
   useEffect(() => {
     if (!selectedCase && casesQuery.data && casesQuery.data.length > 0) {
@@ -83,11 +98,13 @@ function HomePageInner() {
     // clear run context when switching cases
     setRunId(null);
     setRunsHistory({});
+    setRunSummaries({});
     setDisplayPlanId(null);
     setPollStatus("unknown");
     setReferenceError(undefined);
     setLogRunId(null);
     setConsoleLines([]);
+    setReferenceLoaded(false);
   }, [selectedCase]);
 
   // Seed objectives when case manifest arrives (placeholder defaults)
@@ -114,6 +131,39 @@ function HomePageInner() {
     }
   }, [caseQuery.data?.case_id]);
 
+  useEffect(() => {
+    if (runsListQuery.data) {
+      const summaries: Record<string, RunSummary> = {};
+      runsListQuery.data
+        .filter((r) => !selectedCase || r.patient_id === selectedCase)
+        .forEach((r) => {
+          summaries[r.run_id] = r;
+          if (!runsHistory[r.run_id]) {
+            fetchRun(r.run_id).then((res) => {
+              if (res.artifacts) {
+                setRunsHistory((prev) => ({ ...prev, [r.run_id]: res.artifacts! }));
+              }
+            });
+          }
+        });
+      setRunSummaries(summaries);
+    }
+  }, [runsListQuery.data, runsHistory, selectedCase]);
+
+  // Auto-load reference once per case
+  useEffect(() => {
+    const refKey = selectedCase ? `${selectedCase}-reference` : null;
+    if (!selectedCase || referenceLoaded) return;
+    setLoadingReference(true);
+    loadReferenceDose()
+      .then(() => {
+        setReferenceLoaded(true);
+        if (refKey) setDisplayPlanId(refKey);
+      })
+      .catch(() => setReferenceLoaded(false))
+      .finally(() => setLoadingReference(false));
+  }, [selectedCase, referenceLoaded]);
+
   // Mutation: start optimization
   const optimizeMutation = useMutation({
     mutationFn: (config: any) => startOptimize(config),
@@ -138,6 +188,12 @@ function HomePageInner() {
       }
       if (res.status === "completed" && res.artifacts) {
         setRunsHistory((prev) => ({ ...prev, [id]: res.artifacts! }));
+        if (res.artifacts?.config) {
+          setRunSummaries((prev) => ({
+            ...prev,
+            [id]: { run_id: id, patient_id: res.artifacts?.config?.patient_id, status: "completed", config: res.artifacts.config }
+          }));
+        }
         keepPolling = false;
       } else if (res.status === "failed") {
         if (res.error) appendConsole(`Run ${id} error: ${res.error}`);
@@ -194,11 +250,11 @@ function HomePageInner() {
 
   useEffect(() => {
     // auto-select a plan to display when history changes
+    const refKey = selectedCase ? `${selectedCase}-reference` : null;
     if (!displayPlanId) {
-      const refKey = selectedCase ? `${selectedCase}-reference` : null;
       if (refKey && runsHistory[refKey]) {
         setDisplayPlanId(refKey);
-      } else if (latestRun && runId) {
+      } else if (latestRun && runId && runsHistory[runId]) {
         setDisplayPlanId(runId);
       }
     }
@@ -212,6 +268,44 @@ function HomePageInner() {
           beam_ids: caseQuery.data.beams?.map((b) => b.id)
         }
       : null);
+
+  // When case metadata is available, seed beam IDs and voxel text
+  useEffect(() => {
+    if (caseQuery.data?.beams?.length) {
+      const ids = caseQuery.data.beams.map((b) => b.id);
+      setBeamIdsText(ids.join(","));
+    }
+    setVoxelDsText(voxelDs.join(","));
+  }, [caseQuery.data]);
+
+  const handleSelectPlan = async (id: string | null) => {
+    setDisplayPlanId(id);
+    if (id && !runsHistory[id]) {
+      try {
+        const res = await fetchRun(id);
+        if (res.artifacts) {
+          setRunsHistory((prev) => ({ ...prev, [id]: res.artifacts! }));
+        }
+      } catch (e) {
+        console.error("Failed to fetch run", id, e);
+      }
+    }
+  };
+
+  // Ensure clinical criteria are present for the selected plan
+  useEffect(() => {
+    const id = displayPlanId;
+    if (!id) return;
+    const artifacts = runsHistory[id];
+    if (artifacts && artifacts.clinical_criteria) return;
+    fetchRun(id)
+      .then((res) => {
+        if (res.artifacts) {
+          setRunsHistory((prev) => ({ ...prev, [id]: res.artifacts! }));
+        }
+      })
+      .catch(() => {});
+  }, [displayPlanId, runsHistory]);
 
   // Poll run logs when a run is active
   useEffect(() => {
@@ -296,6 +390,21 @@ function HomePageInner() {
         onReoptimize={() =>
           optimizeMutation.mutate({
             patient_id: selectedCase,
+            voxel_down_sample_factors: voxelDs,
+            beamlet_down_sample_factor: beamletDs,
+            beam_ids: (() => {
+              const parsed = beamIdsText
+                .split(",")
+                .map((p) => parseInt(p.trim(), 10))
+                .filter((n) => Number.isFinite(n));
+              if (parsed.length) return parsed;
+              return caseQuery.data?.beams?.map((b) => b.id);
+            })(),
+            solver: "MOSEK",
+            mosek_params: {
+              MSK_DPAR_MIO_MAX_TIME: maxTime,
+              MSK_DPAR_MIO_TOL_REL_GAP: gap
+            },
             objective_overrides: objectives.map((o) => ({
               structure_name: o.structure_name,
               type: o.type,
@@ -352,24 +461,113 @@ function HomePageInner() {
             <div className="section-title" style={{ margin: 0 }}>Displayed Plan</div>
             <select
               value={displayPlanId || ""}
-              onChange={(e) => setDisplayPlanId(e.target.value || null)}
+              onChange={(e) => handleSelectPlan(e.target.value || null)}
               style={{ padding: 6, borderRadius: 8, background: "rgba(255,255,255,0.04)", color: "var(--text)", border: "1px solid var(--border)" }}
             >
               <option value="">Latest</option>
-              {Object.keys(runsHistory).map((id) => (
-                <option key={id} value={id}>
-                  {id}
-                </option>
-              ))}
+              {(() => {
+                const refKey = selectedCase ? `${selectedCase}-reference` : null;
+                const refOption = refKey ? (
+                  <option key={refKey} value={refKey}>
+                    {refKey} (reference{runsHistory[refKey] ? "" : " - load to view"})
+                  </option>
+                ) : null;
+                const sorted = Object.keys(runSummaries)
+                  .filter((id) => {
+                    if (refKey && id === refKey) return false;
+                    const summary = runSummaries[id];
+                    return !selectedCase || summary?.patient_id === selectedCase;
+                  })
+                  .sort((a, b) => {
+                    const aTime = runSummaries[a]?.created || a;
+                    const bTime = runSummaries[b]?.created || b;
+                    return aTime < bTime ? 1 : -1;
+                  });
+                const options = sorted.map((id) => {
+                  const summary = runSummaries[id];
+                  const cfg = summary?.config || (runsHistory[id] as any)?.config;
+                  const labelParts = [];
+                  if (cfg?.voxel_down_sample_factors) labelParts.push(`ds ${cfg.voxel_down_sample_factors.join("x")}`);
+                  if (cfg?.beamlet_down_sample_factor) labelParts.push(`bl ${cfg.beamlet_down_sample_factor}`);
+                  if (cfg?.mosek_params?.MSK_DPAR_MIO_MAX_TIME)
+                    labelParts.push(`t ${Math.round((cfg.mosek_params.MSK_DPAR_MIO_MAX_TIME / 3600) * 10) / 10}h`);
+                  return (
+                    <option key={id} value={id}>
+                      {labelParts.length ? `${id} (${labelParts.join(", ")})` : id}
+                    </option>
+                  );
+                });
+                return (
+                  <>
+                    {refOption}
+                    {options}
+                  </>
+                );
+              })()}
             </select>
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 8, marginBottom: 12, alignItems: "center" }}>
+            <label style={{ fontSize: 12, color: "var(--muted)" }}>Voxel ds</label>
+            <input
+              type="text"
+              value={voxelDsText}
+              onChange={(e) => {
+                const txt = e.target.value;
+                setVoxelDsText(txt);
+                const parts = txt
+                  .split(",")
+                  .map((p) => parseInt(p.trim(), 10))
+                  .filter((n) => Number.isFinite(n));
+                if (parts.length === 3) setVoxelDs([parts[0], parts[1], parts[2]]);
+              }}
+              style={{ padding: 6, borderRadius: 6, background: "rgba(255,255,255,0.04)", color: "var(--text)", border: "1px solid var(--border)" }}
+            />
+            <label style={{ fontSize: 12, color: "var(--muted)" }}>Beamlet ds</label>
+            <input
+              type="number"
+              min={1}
+              value={beamletDs}
+              onChange={(e) => setBeamletDs(parseInt(e.target.value || "1", 10))}
+              style={{ padding: 6, borderRadius: 6, background: "rgba(255,255,255,0.04)", color: "var(--text)", border: "1px solid var(--border)" }}
+            />
+            <label style={{ fontSize: 12, color: "var(--muted)" }}>Max time (h)</label>
+            <input
+              type="number"
+              min={0.1}
+              step={0.5}
+              value={Math.round((maxTime / 3600) * 10) / 10}
+              onChange={(e) => setMaxTime(Math.max(0, parseFloat(e.target.value || "0")) * 3600)}
+              style={{ padding: 6, borderRadius: 6, background: "rgba(255,255,255,0.04)", color: "var(--text)", border: "1px solid var(--border)" }}
+            />
+            <label style={{ fontSize: 12, color: "var(--muted)" }}>MOSEK gap</label>
+            <input
+              type="number"
+              min={0.0}
+              step={0.01}
+              value={gap}
+              onChange={(e) => setGap(parseFloat(e.target.value || "0") || 0)}
+              style={{ padding: 6, borderRadius: 6, background: "rgba(255,255,255,0.04)", color: "var(--text)", border: "1px solid var(--border)" }}
+            />
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "120px 1fr", gap: 8, marginBottom: 12, alignItems: "center" }}>
+            <label style={{ fontSize: 12, color: "var(--muted)" }}>Beam IDs</label>
+            <input
+              type="text"
+              placeholder="0,11,22,33,44,55,66"
+              value={beamIdsText}
+              onChange={(e) => setBeamIdsText(e.target.value)}
+              style={{ padding: 6, borderRadius: 6, background: "rgba(255,255,255,0.04)", color: "var(--text)", border: "1px solid var(--border)" }}
+            />
           </div>
           <DVHChart dvh={displayPlan?.dvh} selected={objectives.map((o) => o.structure_name)} />
           <ClinicalCriteriaBars
             criteria={
               displayPlan?.clinical_criteria ||
+              latestRun?.clinical_criteria ||
               (selectedCase ? runsHistory[`${selectedCase}-reference`]?.clinical_criteria : null) ||
-              latestRun?.clinical_criteria
+              []
             }
+            dvh={displayPlan?.dvh}
           />
           <ProgressCharts data={progress} status={pollStatus} />
           <RunComparison runs={runsHistory} />

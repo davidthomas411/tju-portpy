@@ -1,4 +1,5 @@
 import { Objective, CaseManifest, RunArtifacts, RunStatus } from "./types";
+import { RunSummary } from "./types";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE || "http://localhost:8000";
 
@@ -37,6 +38,12 @@ export async function fetchRun(runId: string): Promise<{ run_id: string; status:
   return http(`/runs/${runId}`);
 }
 
+export async function fetchRunsList(caseId?: string): Promise<RunSummary[]> {
+  const params = caseId ? `?case_id=${encodeURIComponent(caseId)}` : "";
+  const res = await http<{ runs: RunSummary[] }>(`/runs${params}`);
+  return res.runs;
+}
+
 export async function fetchRunLogs(runId: string): Promise<{ run_id: string; status: RunStatus; lines: string[] }> {
   return http(`/runs/${runId}/logs`);
 }
@@ -66,7 +73,14 @@ export async function fetchDoseSlice(caseId: string, sliceIdx: number, threshold
   return http(`/cases/${caseId}/dose_slice/${sliceIdx}${params}`);
 }
 
-export async function fetchRunDoseSlice(runId: string, sliceIdx: number, thresholdGy?: number): Promise<{ slice_index: number; overlay_png: string; stats: any }> {
-  const params = thresholdGy !== undefined ? `?threshold_gy=${encodeURIComponent(thresholdGy)}` : "";
-  return http(`/runs/${runId}/dose_slice/${sliceIdx}${params}`);
+export async function fetchRunDoseSlice(runId: string, sliceIdx: number, thresholdGy?: number, materialize?: boolean): Promise<{ slice_index: number; overlay_png: string; stats: any }> {
+  const parts: string[] = [];
+  if (thresholdGy !== undefined) parts.push(`threshold_gy=${encodeURIComponent(thresholdGy)}`);
+  if (materialize) parts.push("materialize=1");
+  const qs = parts.length ? `?${parts.join("&")}` : "";
+  return http(`/runs/${runId}/dose_slice/${sliceIdx}${qs}`);
+}
+
+export async function materializeRunDose(runId: string): Promise<{ run_id: string; cached: boolean; stats: any }> {
+  return http(`/runs/${runId}/materialize_dose`, { method: "POST" });
 }

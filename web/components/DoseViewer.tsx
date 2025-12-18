@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { fetchCtSlice, fetchDoseSlice, fetchRunDoseSlice } from "../lib/api";
+import { fetchCtSlice, fetchDoseSlice, fetchRunDoseSlice, materializeRunDose } from "../lib/api";
 import { DoseInfo } from "../lib/types";
 import styles from "./DoseViewer.module.css";
 
@@ -28,6 +28,8 @@ export default function DoseViewer({
   const [ctSlice, setCtSlice] = useState<any | null>(null);
   const [doseOverlay, setDoseOverlay] = useState<{ overlay_png: string; stats?: any } | null>(null);
   const [loading, setLoading] = useState(false);
+  const [overlayLoading, setOverlayLoading] = useState(false);
+  const [materializing, setMaterializing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [doseError, setDoseError] = useState<string | null>(null);
   const [thresholdGy, setThresholdGy] = useState<number>(0);
@@ -58,6 +60,7 @@ export default function DoseViewer({
       return;
     }
     setDoseError(null);
+    setOverlayLoading(true);
     const loader = selectedPlanId && !selectedPlanIsReference
       ? fetchRunDoseSlice(selectedPlanId, sliceIdx, thresholdGy)
       : fetchDoseSlice(caseId!, sliceIdx, thresholdGy);
@@ -67,6 +70,9 @@ export default function DoseViewer({
         console.error(err);
         setDoseOverlay(null);
         setDoseError(err.message);
+      })
+      .finally(() => {
+        setOverlayLoading(false);
       });
   }, [caseId, sliceIdx, thresholdGy, selectedPlanId, selectedPlanIsReference]);
 
@@ -75,7 +81,7 @@ export default function DoseViewer({
       return { max: dose.stats.max_gy, mean: dose.stats.mean_gy };
     }
     if (!dose?.dose_1d || dose.dose_1d.length === 0) return null;
-    const max = Math.max(...dose.dose_1d);
+    const max = dose.dose_1d.reduce((m, v) => (v > m ? v : m), Number.NEGATIVE_INFINITY);
     const mean = dose.dose_1d.reduce((acc, v) => acc + v, 0) / dose.dose_1d.length;
     return { max, mean };
   }, [dose]);
@@ -84,13 +90,15 @@ export default function DoseViewer({
     <div className="card">
       <div className={styles.header}>
         <div className="section-title">Dose Viewer (Axial)</div>
-        <button
-          className={styles.action}
-          onClick={() => onLoadReference?.()}
-          disabled={!caseId || loadingReference || !onLoadReference}
-        >
-          {loadingReference ? "Loading prior plan/dose…" : "Load prior plan/dose"}
-        </button>
+        <div className={styles.status}>
+          {overlayLoading
+            ? "Loading dose overlay…"
+            : materializing
+              ? "Materializing dose volume…"
+              : doseError
+                ? `Dose error: ${doseError}`
+                : "Dose ready"}
+        </div>
       </div>
       <div className={styles.viewport}>
         {ctSlice?.image_png ? (
@@ -102,6 +110,16 @@ export default function DoseViewer({
               ) : null}
               {selectedPlanId && !selectedPlanIsReference ? (
                 <div className={styles.note}>Showing optimized dose overlay</div>
+              ) : null}
+              {doseOverlay?.stats?.max_gy ? (
+                <>
+                  <div className={styles.colorbar} />
+                  <div className={styles.colorbarLabels}>
+                    <span>{(doseOverlay.stats.max_gy || 0).toFixed(1)} Gy</span>
+                    <span>{(thresholdGy || 0).toFixed(1)} Gy</span>
+                    <span>0 Gy</span>
+                  </div>
+                </>
               ) : null}
               <div className={styles.threshold}>
                 <label>Threshold (Gy)</label>
@@ -184,7 +202,37 @@ export default function DoseViewer({
       </div>
 
       {referenceError ? <div className={styles.placeholder}>{referenceError}</div> : null}
-      {doseError && !doseOverlay ? <div className={styles.placeholder}>Dose overlay unavailable: {doseError}</div> : null}
+      {doseError && !doseOverlay ? (
+        <div className={styles.placeholder}>
+          Dose overlay unavailable: {doseError}
+          {selectedPlanId && !selectedPlanIsReference ? (
+            <div className={styles.actions}>
+              <button
+                disabled={materializing}
+                onClick={async () => {
+                  try {
+                    setMaterializing(true);
+                    setOverlayLoading(true);
+                    setDoseError(null);
+                    await materializeRunDose(selectedPlanId);
+                    // fetch with materialize flag to ensure overlay uses newly cached dose
+                    const res = await fetchRunDoseSlice(selectedPlanId, sliceIdx, thresholdGy, true);
+                    setDoseOverlay(res);
+                  } catch (err: any) {
+                    console.error(err);
+                    setDoseError(err.message);
+                  } finally {
+                    setOverlayLoading(false);
+                    setMaterializing(false);
+                  }
+                }}
+              >
+                Compute dose volume
+              </button>
+            </div>
+          ) : null}
+        </div>
+      ) : null}
 
       {ctSlice?.debug ? (
         <div className={styles.debug}>

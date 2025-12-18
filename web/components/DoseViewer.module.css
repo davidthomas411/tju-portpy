@@ -85,6 +85,31 @@
   border: 1px solid var(--border);
 }
 
+.colorbar {
+  position: absolute;
+  right: 10px;
+  bottom: 10px;
+  width: 12px;
+  height: 160px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: linear-gradient(180deg, #ff0000 0%, #ffa500 20%, #ffff00 40%, #00ff00 60%, #00ffff 80%, #0000ff 100%);
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.35);
+}
+
+.colorbarLabels {
+  position: absolute;
+  right: 28px;
+  bottom: 10px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  height: 160px;
+  font-size: 11px;
+  color: var(--text);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6);
+}
+
 .threshold {
   position: absolute;
   top: 10px;
@@ -184,4 +209,25 @@
 
 .action:not(:disabled):hover {
   box-shadow: 0 0 0 1px var(--accent);
+}
+
+.actions {
+  margin-top: 8px;
+  display: flex;
+  justify-content: center;
+}
+
+.actions button {
+  background: linear-gradient(120deg, rgba(102, 184, 255, 0.2), rgba(102, 184, 255, 0.45));
+  color: var(--text);
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+  padding: 8px 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.actions button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }

@@ -13,7 +13,9 @@ type Props = {
 
 export default function TopBar({ cases, selectedCase, onSelectCase, runStatus, onReoptimize, isRunning, solverHealth }: Props) {
   const solverOk = solverHealth?.mosek_import && solverHealth?.mosek_license;
-  const settingsNote = "Current settings: 5 beams, voxel ds [8,8,2], beamlet ds 8, MOSEK gap 10%, max time 600s";
+  const settingsNote = "Current settings: 7 beams (11° step), voxel ds [2,2,1], beamlet ds 2, MOSEK gap 5%, max time 6h";
+  const version = "Version 0.9.0";
+  const changeLog = "Latest: per-plan DVH/clinical criteria recompute, coverage coloring, patient-run filtering.";
   return (
     <div className={`${styles.bar} card`}>
       <div className={styles.left}>
@@ -35,6 +37,7 @@ export default function TopBar({ cases, selectedCase, onSelectCase, runStatus, o
             </span>
           </span>
           <span className={styles.settingsNote}>{settingsNote}</span>
+          <span className={styles.settingsNote}>{version} — {changeLog}</span>
         </div>
       </div>
       <div className={styles.actions}>

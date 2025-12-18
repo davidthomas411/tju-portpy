@@ -41,4 +41,13 @@ export type RunArtifacts = {
   dose?: DoseInfo;
   plan?: Record<string, any>;
   clinical_criteria?: Array<Record<string, any>>;
+  config?: Record<string, any>;
+};
+
+export type RunSummary = {
+  run_id: string;
+  patient_id?: string;
+  status: RunStatus;
+  created?: string | null;
+  config?: Record<string, any>;
 };
