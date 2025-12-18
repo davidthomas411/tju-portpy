@@ -60,6 +60,12 @@
   font-weight: 700;
 }
 
+.settingsNote {
+  color: var(--muted);
+  font-size: 12px;
+  margin-left: 8px;
+}
+
 .buttonPrimary {
   background: var(--accent);
   color: white;

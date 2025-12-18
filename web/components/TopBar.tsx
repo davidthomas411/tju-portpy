@@ -13,6 +13,7 @@ type Props = {
 
 export default function TopBar({ cases, selectedCase, onSelectCase, runStatus, onReoptimize, isRunning, solverHealth }: Props) {
   const solverOk = solverHealth?.mosek_import && solverHealth?.mosek_license;
+  const settingsNote = "Current settings: 5 beams, voxel ds [8,8,2], beamlet ds 8, MOSEK gap 10%, max time 600s";
   return (
     <div className={`${styles.bar} card`}>
       <div className={styles.left}>
@@ -33,6 +34,7 @@ export default function TopBar({ cases, selectedCase, onSelectCase, runStatus, o
               {solverOk ? "MOSEK ready" : solverHealth?.error ? "MOSEK unavailable" : "checking..."}
             </span>
           </span>
+          <span className={styles.settingsNote}>{settingsNote}</span>
         </div>
       </div>
       <div className={styles.actions}>
