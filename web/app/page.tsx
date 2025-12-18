@@ -194,6 +194,7 @@ function HomePageInner() {
             [id]: { run_id: id, patient_id: res.artifacts?.config?.patient_id, status: "completed", config: res.artifacts.config }
           }));
         }
+        setDisplayPlanId(id);
         keepPolling = false;
       } else if (res.status === "failed") {
         if (res.error) appendConsole(`Run ${id} error: ${res.error}`);

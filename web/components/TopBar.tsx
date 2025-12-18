@@ -19,7 +19,7 @@ export default function TopBar({ cases, selectedCase, onSelectCase, runStatus, o
   return (
     <div className={`${styles.bar} card`}>
       <div className={styles.left}>
-        <div className={styles.title}>PortPy VMAT Planner</div>
+        <img src="/jefferson-university-2.svg" alt="Jefferson University" className={styles.logo} />
         <div className={styles.controls}>
           <label className={styles.label}>Case</label>
           <select className={styles.select} value={selectedCase || ""} onChange={(e) => onSelectCase(e.target.value)}>

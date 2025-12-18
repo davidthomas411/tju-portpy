@@ -66,6 +66,62 @@ Progress tracking will update this file as components land.
 - Introduced console panel, auto-scroll, solver progress charts with elapsed timer, and prescription pane.
 - Bounded MOSEK runs with optional time/gap caps and retries; ECOS_BB fallback remains.
 
+# Next Release – v1.0.0 (Job orchestration, reliability, and data explorer)
+
+Goal: make the app a fast, reliable experiment runner. Queue jobs to remote/desktop workers without blocking the UI, avoid stale artifacts, and expose a database-backed history so prior runs and parameter sweeps are instantly explorable. Guarantee DVH/dose/CC freshness when switching plans/cases, and add missing PTV minimum coverage criteria/normalization.
+
+## Themes
+- **Job orchestration + workers**: API issues job IDs to a queue; workers (desktop or server agents) pull, run optimizer, and push artifacts. Frontend never blocks; polling is via status endpoints that stream progress/logs. Support round-robin or target worker selection.
+- **Asynchronous dose reconstruction**: If dose reconstruction >10s, offload to a background task; UI only swaps in when ready. Avoid UI freezes; show “pending dose” states and previously cached dose.
+- **Database-backed runs**: Central DB (e.g., Postgres/SQLite) for runs, configs, objectives, CC, metrics, artifacts manifest. File store (npz) remains for large arrays, but metadata is queryable for parameter-space analysis and a “Runs/Jobs” page.
+- **UI reliability + responsiveness**: Never show stale dose/DVH/CC when switching case/plan. Auto-select the most recent valid artifacts; prefetch needed runs. Replace free-text beam IDs with a beam-count selector that prepopulates IDs from metadata.
+- **Clinical criteria completeness**: Add PTV minimum coverage to the clinical criteria file; allow optional plan normalization for comparing runs with different PTV coverage.
+- **Versioning**: Track changes as v1.0.0; note API/UI/DB migrations explicitly.
+
+## Workstreams & tasks
+- **Orchestrator/queue**
+  - Add a job table (id, case, config hash, status, timestamps, worker_id, error, artifacts refs).
+  - Implement a lightweight queue (DB-backed) and worker lease/heartbeat.
+  - Extend API: `POST /jobs` (enqueue), `GET /jobs`, `GET /jobs/{id}`, `PATCH /jobs/{id}` (cancel), `GET /workers` (status).
+  - Worker agent CLI/service: subscribes to queue, runs optimizer, streams logs/progress, uploads artifacts manifest.
+  - Configurable worker selection (auto/best available/specific worker).
+- **Asynchronous dose/dvh pipeline**
+  - Split optimizer vs dose reconstruction tasks. If dose build >10s, enqueue a separate reconstruction job; UI shows cached dose until complete.
+  - Cache dose volumes keyed by (run_id, checksum) to avoid recompute on replay.
+  - Stream progress states so UI doesn’t freeze; explicit “dose pending” badge.
+- **Database integration**
+  - Add DB schema for runs, jobs, configs, objectives, clinical criteria, metrics, artifacts manifest, and references to npz paths.
+  - Migrate existing run metadata into DB; maintain file store for arrays.
+  - Add filters/search for runs (case, beams, voxel ds, gap, solver, timestamps).
+  - Expose a “Database / Jobs” page in the UI to view queued/running/completed jobs with sortable columns and quick load actions.
+- **UI reliability & UX**
+  - Ensure display plan resets on case change and always points to the freshest artifacts for the selected run; invalidate stale cache on selection change.
+  - Prefetch artifacts for selected run and reference; guard against stale DVH/CC.
+  - Replace beam ID text field with: (a) dropdown for beam pattern (metadata default), (b) numeric beam count selector, (c) optional advanced “edit IDs” dialog.
+  - Keep UI snappy: optimistic state for job enqueue; background polling with minimal re-render; debounce inputs.
+- **Clinical criteria completeness**
+  - Add PTV minimum coverage to the clinical criteria JSON; expose in UI.
+  - Add optional plan normalization toggle to compare runs with differing PTV coverage.
+  - Recompute CC for each run on load and cache results in DB.
+- **Versioning & migration**
+  - Tag this plan as v1.0.0; document breaking changes (DB required, new endpoints).
+  - Migration script to bootstrap DB and ingest existing runs.
+  - Update README with multi-worker/queue instructions.
+
+## Smooth path forward (phased)
+1) **DB + queue scaffold**: Define schema, add run/job records, keep file store for dose; implement API CRUD and worker heartbeat.
+2) **Worker agent**: CLI/service to pull jobs, run optimizer, stream logs/progress, write artifacts manifest + npz paths; support local desktop/WSL and remote.
+3) **UI jobs page + reliable plan selection**: New page for jobs/runs; tighten plan selection to avoid stale dose/DVH; auto-set display plan on completion.
+4) **Async dose pipeline**: Split reconstruction task; add “pending dose” state and caching; threshold >10s triggers background path.
+5) **Beam UX + CC updates**: Add beam-count selector and advanced edit; add PTV min coverage + normalization toggle; surface in CC display.
+6) **Polish + docs**: README update, environment instructions, migration guide; perf tuning (no reload for backend, cache dose loads).
+
+## Risks / mitigations
+- **WSL I/O latency**: Keep data/cache in WSL home or dedicated volume; minimize large file churn on `/mnt`.
+- **Long dose loads**: Enforce caching + background reconstruction; precompute when idle.
+- **Staleness**: Aggressive cache invalidation on case/plan change; display plan pinning logic with versioned artifacts.
+- **Multi-worker coordination**: Use DB leases/heartbeats; handle worker dropouts with retry/cancel states.
+
 ## Next actions
 - Harden MOSEK parameter detection (set only supported params for the installed version) to avoid fallback to ECOS.
 - Add lightweight validation on objective overrides and clearer error surfacing to the UI.

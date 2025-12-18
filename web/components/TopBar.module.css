@@ -21,6 +21,12 @@
   color: #fff;
 }
 
+.logo {
+  height: 36px;
+  width: auto;
+  display: block;
+}
+
 .controls {
   display: flex;
   align-items: center;
