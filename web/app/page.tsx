@@ -42,6 +42,7 @@ function HomePageInner() {
   const [objectives, setObjectives] = useState<Objective[]>([]);
   const [runId, setRunId] = useState<string | null>(null);
   const [runsHistory, setRunsHistory] = useState<Record<string, RunArtifacts>>({});
+  const [displayPlanId, setDisplayPlanId] = useState<string | null>(null);
   const [pollStatus, setPollStatus] = useState<RunStatus>("unknown");
   const [ensuring, setEnsuring] = useState(false);
   const [ensureMsg, setEnsureMsg] = useState<string | undefined>(undefined);
@@ -82,6 +83,7 @@ function HomePageInner() {
     // clear run context when switching cases
     setRunId(null);
     setRunsHistory({});
+    setDisplayPlanId(null);
     setPollStatus("unknown");
     setReferenceError(undefined);
     setLogRunId(null);
@@ -179,6 +181,28 @@ function HomePageInner() {
     if (runId && runsHistory[runId]) return runsHistory[runId];
     return null;
   }, [runId, runsHistory]);
+  // Preferred plan to display (clinical/dose/DVH)
+  const displayPlan = useMemo<RunArtifacts | null>(() => {
+    if (displayPlanId && runsHistory[displayPlanId]) return runsHistory[displayPlanId];
+    const refKey = selectedCase ? `${selectedCase}-reference` : null;
+    if (refKey && runsHistory[refKey]) return runsHistory[refKey];
+    if (latestRun) return latestRun;
+    // fall back to any run in history
+    const first = Object.values(runsHistory)[0];
+    return first || null;
+  }, [displayPlanId, runsHistory, latestRun, selectedCase]);
+
+  useEffect(() => {
+    // auto-select a plan to display when history changes
+    if (!displayPlanId) {
+      const refKey = selectedCase ? `${selectedCase}-reference` : null;
+      if (refKey && runsHistory[refKey]) {
+        setDisplayPlanId(refKey);
+      } else if (latestRun && runId) {
+        setDisplayPlanId(runId);
+      }
+    }
+  }, [displayPlanId, runsHistory, latestRun, runId, selectedCase]);
   const planForDisplay =
     latestRun?.plan ||
     (caseQuery.data
@@ -324,8 +348,29 @@ function HomePageInner() {
 
         <div className={styles.center}>
           <PrescriptionPane plan={planForDisplay} />
-          <DVHChart dvh={latestRun?.dvh} selected={objectives.map((o) => o.structure_name)} />
-          <ClinicalCriteriaBars criteria={latestRun?.clinical_criteria} />
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+            <div className="section-title" style={{ margin: 0 }}>Displayed Plan</div>
+            <select
+              value={displayPlanId || ""}
+              onChange={(e) => setDisplayPlanId(e.target.value || null)}
+              style={{ padding: 6, borderRadius: 8, background: "rgba(255,255,255,0.04)", color: "var(--text)", border: "1px solid var(--border)" }}
+            >
+              <option value="">Latest</option>
+              {Object.keys(runsHistory).map((id) => (
+                <option key={id} value={id}>
+                  {id}
+                </option>
+              ))}
+            </select>
+          </div>
+          <DVHChart dvh={displayPlan?.dvh} selected={objectives.map((o) => o.structure_name)} />
+          <ClinicalCriteriaBars
+            criteria={
+              displayPlan?.clinical_criteria ||
+              (selectedCase ? runsHistory[`${selectedCase}-reference`]?.clinical_criteria : null) ||
+              latestRun?.clinical_criteria
+            }
+          />
           <ProgressCharts data={progress} status={pollStatus} />
           <RunComparison runs={runsHistory} />
         </div>
@@ -346,6 +391,7 @@ function HomePageInner() {
             onLoadReference={loadReferenceDose}
             loadingReference={loadingReference}
             referenceError={referenceError}
+            selectedPlanId={displayPlanId}
           />
         </div>
       </div>

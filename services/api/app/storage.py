@@ -135,8 +135,18 @@ def save_case_manifest(case_id: str, manifest: Dict[str, Any]) -> Path:
 
 def _write_json(path: Path, data: Any) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
+    def _json_default(obj):
+        import numpy as np  # local import
+        if isinstance(obj, (np.integer,)):
+            return int(obj)
+        if isinstance(obj, (np.floating,)):
+            return float(obj)
+        if isinstance(obj, (np.ndarray,)):
+            return obj.tolist()
+        return str(obj)
+
     with path.open("w") as f:
-        json.dump(data, f, indent=2)
+        json.dump(data, f, indent=2, default=_json_default)
 
 
 def _read_json(path: Path) -> Any:

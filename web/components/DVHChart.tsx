@@ -23,6 +23,16 @@ export default function DVHChart({ dvh, selected }: Props) {
     });
     rows.push(row);
   }
+  rows.sort((a, b) => (a.dose ?? 0) - (b.dose ?? 0));
+  const maxDose = rows.length ? Math.max(...rows.map((r) => r.dose || 0), 0) : 0;
+  const doseTicks = [];
+  if (rows.length) {
+    for (let d = 0; d <= maxDose + 5; d += 10) {
+      doseTicks.push(d);
+    }
+  } else {
+    doseTicks.push(0, 10, 20, 30, 40, 50, 60);
+  }
 
   const axisColor = "var(--muted)";
   const hasData = rows.length > 0 && structNames.length > 0;
@@ -39,8 +49,10 @@ export default function DVHChart({ dvh, selected }: Props) {
                 dataKey="dose"
                 stroke={axisColor}
                 tick={{ fill: axisColor }}
-                tickFormatter={(v) => (v != null ? Math.round(v) : "")}
+                tickFormatter={(v) => (v != null ? Math.round(v / 10) * 10 : "")}
                 allowDecimals={false}
+                ticks={doseTicks}
+                interval={0}
                 label={{ value: "Dose (Gy)", position: "insideBottom", offset: -20, fill: axisColor }}
               />
               <YAxis

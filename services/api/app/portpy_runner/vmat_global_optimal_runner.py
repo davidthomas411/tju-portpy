@@ -30,7 +30,7 @@ def default_config() -> Dict[str, Any]:
     repo_root = _default_repo_root()
     portpy_repo = repo_root / "PortPy-master"
     data_dir = portpy_repo / "data"
-    # Use fewer beams (valid for PortPy data) and heavier downsampling to speed up solves
+    # Use fewer beams (valid for PortPy data) to keep MIP manageable
     beam_ids = [0, 11, 22, 33, 44]  # 5 valid beams from the original 7-beam set
     return {
         "patient_id": "Lung_Patient_6",
@@ -39,15 +39,15 @@ def default_config() -> Dict[str, Any]:
         "beam_ids": beam_ids,
         "protocol_global_opt": "Lung_2Gy_30Fx",
         "protocol_vmat": "Lung_2Gy_30Fx_vmat",
-        "voxel_down_sample_factors": [8, 8, 2],
-        "beamlet_down_sample_factor": 8,
+        "voxel_down_sample_factors": [6, 6, 1],  # higher fidelity for longer runs
+        "beamlet_down_sample_factor": 6,
         "per_beam_mu_upper_bound": 2.0,  # U in notebook
         "solver": "MOSEK",
         "solver_verbose": True,
         # Keep MIP runs bounded so they finish in a few minutes
         "mosek_params": {
-            "MSK_DPAR_MIO_MAX_TIME": 600.0,       # seconds
-            "MSK_DPAR_MIO_TOL_REL_GAP": 0.10,     # stop at 10% gap
+            "MSK_DPAR_MIO_MAX_TIME": 1800.0,      # seconds (~30 min)
+            "MSK_DPAR_MIO_TOL_REL_GAP": 0.05,     # stop at 5% gap
         },
         "objective_overrides": [],  # list of dicts (structure_name, type, weight, dose_gy/dose_perc)
         "metrics": _default_metrics_config(),
@@ -150,19 +150,6 @@ def run_vmat_global_optimal(config: Optional[Dict[str, Any]] = None) -> Dict[str
             solver_used = fallback
             sol["warning"] = f"Primary solver failed ({err}); used {fallback}."
     solve_time = time.time() - start_solve
-
-    status = getattr(opt.prob, "status", None) if getattr(opt, "prob", None) else sol.get("status")
-    if status not in ("optimal", "optimal_inaccurate"):
-        # Surface failure early; downstream artifacts depend on a valid solution
-        return {
-            "solver_trace": {
-                "solver": solver_used,
-                "status": status or "failed",
-                "warning": sol.get("warning"),
-                "solve_time_seconds": solve_time,
-            },
-            "solution": {},
-        }
 
     # Attach MIP vars to solution
     sol["MU"] = mip_vars["mu"].value

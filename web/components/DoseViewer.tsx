@@ -10,6 +10,7 @@ type Props = {
   onLoadReference?: () => void;
   loadingReference?: boolean;
   referenceError?: string;
+  selectedPlanId?: string | null;
 };
 
 export default function DoseViewer({
@@ -18,7 +19,8 @@ export default function DoseViewer({
   caseId,
   onLoadReference,
   loadingReference,
-  referenceError
+  referenceError,
+  selectedPlanId
 }: Props) {
   const [sliceIdx, setSliceIdx] = useState(60);
   const [ctSlice, setCtSlice] = useState<any | null>(null);
@@ -92,6 +94,9 @@ export default function DoseViewer({
               <img className={styles.ctImage} src={ctSlice.image_png} alt={`CT slice ${sliceIdx}`} />
               {doseOverlay?.overlay_png ? (
                 <img className={styles.overlayImage} src={doseOverlay.overlay_png} alt="Dose overlay" />
+              ) : null}
+              {selectedPlanId && !selectedPlanId.includes("reference") ? (
+                <div className={styles.note}>Overlay is reference dose; optimized dose overlay not available.</div>
               ) : null}
               <div className={styles.threshold}>
                 <label>Threshold (Gy)</label>

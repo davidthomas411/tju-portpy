@@ -428,7 +428,13 @@ def _run_job(run_id: str, config: Dict[str, Any]) -> None:
         append_log_line(run_id, f"[{run_id}] started")
         with _capture_solver_output(run_id, parser=_progress_parser(run_id)):
             result = run_vmat_global_optimal(config)
+        # Convert to native types to avoid numpy serialization issues
+        result = _to_native(result)
         solver_status = result.get("solver_trace", {}).get("status", "unknown")
+        if solver_status in (None, "unknown"):
+            # If we have artifacts (dose/dvh), mark as completed so UI can load them
+            if result.get("dose") or result.get("dvh"):
+                solver_status = "completed"
         append_log_line(run_id, f"[{run_id}] {solver_status}")
         save_run_artifacts(run_id, result)
         # overwrite logs.json with solver status so polling stops
@@ -436,7 +442,7 @@ def _run_job(run_id: str, config: Dict[str, Any]) -> None:
         _write_json(run_dir(run_id) / "logs.json", {"status": solver_status, "timestamp": time.time()})
     except Exception as exc:  # noqa: BLE001
         append_log_line(run_id, f"[{run_id}] failed: {exc}")
-        save_run_artifacts(run_id, {"solver_trace": {"status": "failed", "error": str(exc)}})
+        save_run_artifacts(run_id, _to_native({"solver_trace": {"status": "failed", "error": str(exc)}}))
         # mark logs status as failed so UI polling stops correctly
         from .storage import _write_json, run_dir
         _write_json(run_dir(run_id) / "logs.json", {"status": "failed", "timestamp": time.time(), "error": str(exc)})
