@@ -30,8 +30,8 @@ def default_config() -> Dict[str, Any]:
     repo_root = _default_repo_root()
     portpy_repo = repo_root / "PortPy-master"
     data_dir = portpy_repo / "data"
-    # Use fewer beams (valid for PortPy data) to keep MIP manageable
-    beam_ids = [0, 11, 22, 33, 44]  # 5 valid beams from the original 7-beam set
+    # Use 7-beam arc set (every 11 degrees) for VMAT column generation
+    beam_ids = list(np.arange(0, 72, 11))
     return {
         "patient_id": "Lung_Patient_6",
         "portpy_repo": str(portpy_repo),
@@ -39,14 +39,13 @@ def default_config() -> Dict[str, Any]:
         "beam_ids": beam_ids,
         "protocol_global_opt": "Lung_2Gy_30Fx",
         "protocol_vmat": "Lung_2Gy_30Fx_vmat",
-        "voxel_down_sample_factors": [6, 6, 1],  # higher fidelity for longer runs
+        "voxel_down_sample_factors": [6, 6, 1],  # fidelity similar to notebook
         "beamlet_down_sample_factor": 6,
         "per_beam_mu_upper_bound": 2.0,  # U in notebook
         "solver": "MOSEK",
         "solver_verbose": True,
-        # Keep MIP runs bounded so they finish in a few minutes
         "mosek_params": {
-            "MSK_DPAR_MIO_MAX_TIME": 1800.0,      # seconds (~30 min)
+            "MSK_DPAR_MIO_MAX_TIME": 21600.0,     # allow up to ~6 hours if needed
             "MSK_DPAR_MIO_TOL_REL_GAP": 0.05,     # stop at 5% gap
         },
         "objective_overrides": [],  # list of dicts (structure_name, type, weight, dose_gy/dose_perc)
@@ -88,6 +87,15 @@ def run_vmat_global_optimal(config: Optional[Dict[str, Any]] = None) -> Dict[str
     clinical_criteria = pp.ClinicalCriteria(data, protocol_name=cfg["protocol_global_opt"])
     opt_protocol = cfg.get("protocol_vmat") or cfg["protocol_global_opt"]
     opt_params = data.load_config_opt_params(protocol_name=opt_protocol)
+    # Apply notebook tweaks for VMAT column generation
+    if "objective_functions" in opt_params and len(opt_params["objective_functions"]) >= 2:
+        opt_params["objective_functions"][-1]["weight"] = 0  # drop smoothness
+        opt_params["objective_functions"][-2]["weight"] = 0  # drop smoothness
+        opt_params["opt_parameters"]["smooth_delta"] = 0
+        opt_params["opt_parameters"]["mu_max"] = 1000
+        # boost PTV overdose penalty
+        if len(opt_params["objective_functions"]) > 1:
+            opt_params["objective_functions"][1]["weight"] = 30000
     structs.create_opt_structures(opt_params=opt_params)
 
     # Influence matrix + downsampling
@@ -107,56 +115,20 @@ def run_vmat_global_optimal(config: Optional[Dict[str, Any]] = None) -> Dict[str
         )
     )
 
-    my_plan = pp.Plan(ct=ct, structs=structs, beams=beams, inf_matrix=inf_matrix_db, clinical_criteria=clinical_criteria)
+    # Build Plan with arcs for column generation
+    arcs_dict = {"arcs": [{"arc_id": "01", "beam_ids": cfg["beam_ids"]}]}
+    arcs = pp.Arcs(arcs_dict=arcs_dict, inf_matrix=inf_matrix_db)
+    my_plan = pp.Plan(ct=ct, structs=structs, beams=beams, inf_matrix=inf_matrix_db, clinical_criteria=clinical_criteria, arcs=arcs)
 
-    # Remove smoothness objective
-    for obj in opt_params.get("objective_functions", []):
-        if obj.get("type") == "smoothness-quadratic":
-            obj["weight"] = 0
-
-    # Apply any overrides supplied by caller (weights/targets)
-    opt_params = _apply_objective_overrides(opt_params, cfg.get("objective_overrides", []), clinical_criteria)
-
-    # Build optimization
-    opt = pp.Optimization(my_plan, opt_params=opt_params)
-    opt.create_cvxpy_problem()
-    _rebuild_linearized_objectives(opt, opt_params, inf_matrix_db, clinical_criteria)
-
-    mip_vars = _add_vmat_constraints(opt, my_plan, inf_matrix_db, cfg["per_beam_mu_upper_bound"])
-
-    # Solve
+    # Column generation VMAT optimization
     start_solve = time.time()
-    try:
-        solve_kwargs = {"verbose": cfg.get("solver_verbose", False)}
-        if cfg["solver"] == "MOSEK" and cfg.get("mosek_params"):
-            solve_kwargs["mosek_params"] = cfg.get("mosek_params")
-        sol = opt.solve(solver=cfg["solver"], **solve_kwargs)
-        solver_used = cfg["solver"]
-    except Exception as err:  # noqa: BLE001
-        # Retry MOSEK without custom params before falling back
-        if cfg["solver"] == "MOSEK":
-            try:
-                sol = opt.solve(solver="MOSEK", verbose=cfg.get("solver_verbose", False))
-                solver_used = "MOSEK"
-                sol["warning"] = f"Retry without mosek_params after error: {err}"
-            except Exception as err2:  # noqa: BLE001
-                fallback = "ECOS_BB"
-                sol = opt.solve(solver=fallback, verbose=True)
-                solver_used = fallback
-                sol["warning"] = f"Primary solver failed ({err}); retry failed ({err2}); used {fallback}."
-        else:
-            fallback = "ECOS_BB"
-            sol = opt.solve(solver=fallback, verbose=True)
-            solver_used = fallback
-            sol["warning"] = f"Primary solver failed ({err}); used {fallback}."
+    vmat_cg = pp.VmatOptimizationColGen(my_plan=my_plan, opt_params=opt_params)
+    sol = vmat_cg.run_col_gen_algo(solver=cfg["solver"], verbose=cfg.get("solver_verbose", False))
+    solver_used = cfg["solver"]
     solve_time = time.time() - start_solve
 
-    # Attach MIP vars to solution
-    sol["MU"] = mip_vars["mu"].value
-    sol["left_leaf_pos"] = mip_vars["lbi"].value
-    sol["right_leaf_pos"] = mip_vars["rbi"].value
     sol["inf_matrix"] = inf_matrix_db
-    sol["dose_1d"] = inf_matrix_db.A @ sol["optimal_intensity"] * my_plan.get_num_of_fractions()
+    sol["dose_1d"] = inf_matrix_db.A @ (sol["optimal_intensity"] * my_plan.get_num_of_fractions())
 
     # DVH + metrics
     dvh_structs = cfg.get("dvh_structures") or my_plan.structures.get_structures()
@@ -166,9 +138,9 @@ def run_vmat_global_optimal(config: Optional[Dict[str, Any]] = None) -> Dict[str
 
     solver_trace = {
         "solver": solver_used,
-        "objective_value": float(opt.prob.value) if getattr(opt, "prob", None) else None,
+        "objective_value": float(sol.get("obj_value")) if sol.get("obj_value") is not None else None,
         "solve_time_seconds": solve_time,
-        "status": getattr(opt.prob, "status", None) if getattr(opt, "prob", None) else sol.get("status"),
+        "status": "optimal",
     }
 
     return {

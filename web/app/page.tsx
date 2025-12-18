@@ -385,13 +385,14 @@ function HomePageInner() {
 
         <div className={styles.right}>
           <DoseViewer
-            dose={latestRun?.dose}
+            dose={displayPlan?.dose}
             structures={caseQuery.data?.structures || []}
             caseId={selectedCase}
             onLoadReference={loadReferenceDose}
             loadingReference={loadingReference}
             referenceError={referenceError}
             selectedPlanId={displayPlanId}
+            selectedPlanIsReference={displayPlanId ? displayPlanId.includes("reference") : true}
           />
         </div>
       </div>

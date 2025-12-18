@@ -65,3 +65,8 @@ export async function fetchDoseSlice(caseId: string, sliceIdx: number, threshold
   const params = thresholdGy !== undefined ? `?threshold_gy=${encodeURIComponent(thresholdGy)}` : "";
   return http(`/cases/${caseId}/dose_slice/${sliceIdx}${params}`);
 }
+
+export async function fetchRunDoseSlice(runId: string, sliceIdx: number, thresholdGy?: number): Promise<{ slice_index: number; overlay_png: string; stats: any }> {
+  const params = thresholdGy !== undefined ? `?threshold_gy=${encodeURIComponent(thresholdGy)}` : "";
+  return http(`/runs/${runId}/dose_slice/${sliceIdx}${params}`);
+}

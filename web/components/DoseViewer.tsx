@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { fetchCtSlice, fetchDoseSlice } from "../lib/api";
+import { fetchCtSlice, fetchDoseSlice, fetchRunDoseSlice } from "../lib/api";
 import { DoseInfo } from "../lib/types";
 import styles from "./DoseViewer.module.css";
 
@@ -11,6 +11,7 @@ type Props = {
   loadingReference?: boolean;
   referenceError?: string;
   selectedPlanId?: string | null;
+  selectedPlanIsReference?: boolean;
 };
 
 export default function DoseViewer({
@@ -20,7 +21,8 @@ export default function DoseViewer({
   onLoadReference,
   loadingReference,
   referenceError,
-  selectedPlanId
+  selectedPlanId,
+  selectedPlanIsReference
 }: Props) {
   const [sliceIdx, setSliceIdx] = useState(60);
   const [ctSlice, setCtSlice] = useState<any | null>(null);
@@ -51,19 +53,22 @@ export default function DoseViewer({
   }, [caseId, sliceIdx]);
 
   useEffect(() => {
-    if (!caseId) {
+    if (!caseId && !selectedPlanId) {
       setDoseOverlay(null);
       return;
     }
     setDoseError(null);
-    fetchDoseSlice(caseId, sliceIdx, thresholdGy)
+    const loader = selectedPlanId && !selectedPlanIsReference
+      ? fetchRunDoseSlice(selectedPlanId, sliceIdx, thresholdGy)
+      : fetchDoseSlice(caseId!, sliceIdx, thresholdGy);
+    loader
       .then((res) => setDoseOverlay(res))
       .catch((err) => {
         console.error(err);
         setDoseOverlay(null);
         setDoseError(err.message);
       });
-  }, [caseId, sliceIdx, thresholdGy]);
+  }, [caseId, sliceIdx, thresholdGy, selectedPlanId, selectedPlanIsReference]);
 
   const doseStats = useMemo(() => {
     if (dose?.stats?.mean_gy !== undefined && dose?.stats?.max_gy !== undefined) {
@@ -95,8 +100,8 @@ export default function DoseViewer({
               {doseOverlay?.overlay_png ? (
                 <img className={styles.overlayImage} src={doseOverlay.overlay_png} alt="Dose overlay" />
               ) : null}
-              {selectedPlanId && !selectedPlanId.includes("reference") ? (
-                <div className={styles.note}>Overlay is reference dose; optimized dose overlay not available.</div>
+              {selectedPlanId && !selectedPlanIsReference ? (
+                <div className={styles.note}>Showing optimized dose overlay</div>
               ) : null}
               <div className={styles.threshold}>
                 <label>Threshold (Gy)</label>

@@ -392,6 +392,62 @@ def get_run_progress(run_id: str) -> Dict[str, Any]:
     return {"run_id": run_id, "status": status, "progress": progress}
 
 
+@app.get("/runs/{run_id}/dose_slice/{slice_idx}")
+def get_run_dose_slice(run_id: str, slice_idx: int, threshold_gy: Optional[float] = None) -> Dict[str, Any]:
+    """
+    Return a dose overlay PNG for a given optimized run (rebuilds inf_matrix and maps dose_1d to CT grid).
+    """
+    artifacts = load_run(run_id)
+    cfg = artifacts.get("config")
+    dose_info = artifacts.get("dose", {})
+    dose_1d = dose_info.get("dose_1d")
+    if not cfg or dose_1d is None:
+        raise HTTPException(status_code=404, detail="Run dose not available")
+    try:
+        import portpy.photon as pp  # type: ignore
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=500, detail=f"PortPy import failed: {exc}")
+
+    try:
+        data = pp.DataExplorer(data_dir=str(cfg["data_dir"]))
+        data.patient_id = cfg["patient_id"]
+        ct = pp.CT(data)
+        structs = pp.Structures(data)
+        beams = pp.Beams(data, beam_ids=cfg["beam_ids"])
+        voxel_down_sample_factors = cfg["voxel_down_sample_factors"]
+        opt_vox_xyz_res_mm = [c * f for c, f in zip(ct.get_ct_res_xyz_mm(), voxel_down_sample_factors)]
+        beamlet_down_sample_factor = cfg["beamlet_down_sample_factor"]
+        new_beamlet_width_mm = beams.get_finest_beamlet_width() * beamlet_down_sample_factor
+        new_beamlet_height_mm = beams.get_finest_beamlet_height() * beamlet_down_sample_factor
+        inf_matrix = (
+            pp.InfluenceMatrix(ct=ct, structs=structs, beams=beams)
+            .create_down_sample(
+                beamlet_width_mm=new_beamlet_width_mm,
+                beamlet_height_mm=new_beamlet_height_mm,
+                opt_vox_xyz_res_mm=opt_vox_xyz_res_mm,
+            )
+        )
+        plan = pp.Plan(ct=ct, structs=structs, beams=beams, inf_matrix=inf_matrix, clinical_criteria=None)
+        dose_3d = inf_matrix.dose_1d_to_3d(dose_1d=np.array(dose_1d))
+    except HTTPException:
+        raise
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=500, detail=f"Failed to rebuild dose: {exc}")
+
+    if slice_idx < 0 or slice_idx >= dose_3d.shape[0]:
+        raise HTTPException(status_code=400, detail=f"slice_idx out of range (0-{dose_3d.shape[0]-1})")
+
+    dose_slice = dose_3d[slice_idx, :, :]
+    overlay_png = _dose_overlay_png(dose_slice, threshold_gy=threshold_gy)
+    stats = {
+        "mean_gy": float(np.mean(dose_slice)),
+        "max_gy": float(np.max(dose_slice)),
+        "shape": list(dose_slice.shape),
+        "source": "optimized_run",
+    }
+    return {"slice_index": slice_idx, "overlay_png": overlay_png, "stats": stats}
+
+
 @app.get("/health/solver")
 def solver_health() -> Dict[str, Any]:
     info: Dict[str, Any] = {
