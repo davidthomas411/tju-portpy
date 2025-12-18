@@ -98,7 +98,7 @@ export default function ProgressCharts({ data, status }: Props) {
                         : ["auto", "auto"]
                     }
                     ticks={c.log ? logTicks(c.key as keyof ProgressPoint) : undefined}
-                    tickFormatter={c.log ? (v) => `1e${Math.log10(v)}` : sci}
+                    tickFormatter={c.log ? (v) => Number(v) : sci}
                     allowDataOverflow
                   />
                   <Tooltip />
