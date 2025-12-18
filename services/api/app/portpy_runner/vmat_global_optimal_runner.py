@@ -143,6 +143,16 @@ def run_vmat_global_optimal(config: Optional[Dict[str, Any]] = None) -> Dict[str
         "status": "optimal",
     }
 
+    solution_payload: Dict[str, Any] = {"optimal_intensity": sol.get("optimal_intensity")}
+    if "MU" in sol:
+        solution_payload["MU"] = sol["MU"]
+    if "lbi" in sol:
+        solution_payload["left_leaf_pos"] = sol["lbi"]
+    if "rbi" in sol:
+        solution_payload["right_leaf_pos"] = sol["rbi"]
+    if "arcs" in sol:
+        solution_payload["arcs"] = sol["arcs"]
+
     return {
         "config_used": cfg,
         "solver_trace": solver_trace,
@@ -155,12 +165,7 @@ def run_vmat_global_optimal(config: Optional[Dict[str, Any]] = None) -> Dict[str
             "unit": "Gy",
             "num_fractions": my_plan.get_num_of_fractions(),
         },
-        "solution": {
-            "optimal_intensity": sol["optimal_intensity"],
-            "MU": sol["MU"],
-            "left_leaf_pos": sol["left_leaf_pos"],
-            "right_leaf_pos": sol["right_leaf_pos"],
-        },
+        "solution": solution_payload,
         "plan": {
             "patient_id": cfg["patient_id"],
             "beam_ids": cfg["beam_ids"],
